@@ -1,6 +1,6 @@
 
 
-
+#ALARM DATA
 # Format: items are delimited by !, each line must have 5 items
 #AlarmCode! Type (ALARM, WARNING)! AlarmName! Condition! Additional Info
 
@@ -24,8 +24,8 @@
 1517!ALARM!RPM Sensor (Running - Low Fuel)!Running with Low Fuel Pressure faults to RPM sensor loss!Possible Causes: Low Fuel Pressure for 1200ms, ignition fault. Possible Other Causes: air pocket in fuel line, dirty fuel.
 1518!ALARM!RPM Sensor (No Pulse during Cranking)!RPM Sensor loss, no tooth pulses sensed for 75 consecutive milliseconds while starter active!Possible Cause: starter motor issue, RPM sensor.
 1519!ALARM!RPM Sensor (No Pulse during Running)!Cranking faults to RPM sensor loss!Possible Cause: starter motor issue, RPM sensor.
-1520!ALARM!RPM Sensor (Missing Pulses during Cranking)!Cranking faults to RPM sensor loss. Starter engaged, no tooth pulses for 75 ms!Possible Cause: starter motor issue, RPM sensor align- ment, low battery.
-1521!ALARM!RPM Sensor (Missing Pulses during Running)!While running, no tooth pulses for 75 consecutive milliseconds!Possible Cause: starter motor issue, RPM sensor align- ment, low battery.
+1520!ALARM!RPM Sensor (Missing Pulses during Cranking)!Cranking faults to RPM sensor loss. Starter engaged, no tooth pulses for 75 ms!Possible Cause: starter motor issue, RPM sensor alignment, low battery.
+1521!ALARM!RPM Sensor (Missing Pulses during Running)!While running, no tooth pulses for 75 consecutive milliseconds!Possible Cause: starter motor issue, RPM sensor alignment, low battery.
 1600!ALARM!Underspeed!Unit is Overloaded slowing engine speed, fuel supply low or throttle control problem. Usually undervoltage comes first!Causes: highly inductive loads.
 1601!ALARM!Underspeed (Low Fuel Pressure)!Low Fuel Pressure starves the engine, slowing it. Low fuel pressure detected for 1200ms before underspeed condition detected!Other Sources: Selected wrong fuel type.
 1602!ALARM!Underspeed! Throttle Stuck Closed/near Closed.!The throttle is stuck closed or stuck near closed limiting the fuel to the engine, slowing it down. Stuck closed must be detected for 1 second with underspeed to set E-Code
@@ -35,12 +35,13 @@
 1803!ALARM!Overvoltage (Overspeed)!Over-Voltage!Generator running at higher speed (25% over nominal RPMs)causing overvoltage
 1900!ALARM!Undervoltage (Prolonged)!Under-Voltage!Under-voltage due to loss of voltage for some time (10+ seconds). Generator voltage below 80% of nominal for 10+ seconds
 1901!ALARM!Undervoltage (Instantaneous)!Undervoltage due to sudden loss of voltage.!Generator Voltage less than 15V. Hold off time of 2 seconds
-1902!ALARM!Undervoltage (Both Zero Crosses missing)!Undervoltage due to faulty excitation winding, or zero cross circuit, or circuit ingeneral. Both zero crosses must be missing for 1.5 seconds.!Possible cause: loose wiring, field boost hardware failure
+1902!ALARM!Undervoltage (Both Zero Crosses missing)!Undervoltage due to faulty excitation winding, or zero cross circuit, or circuit in general. Both zero crosses must be missing for 1.5 seconds.!Possible cause: loose wiring, field boost hardware failure
 1903!ALARM!Undervoltage (Little / No Voltage)!Little / No Voltage (<120 V)!Controller measuring no voltage resulting in Undervoltage. Generator voltage less than 120 V when undervoltage set
 1904!ALARM!Undervoltage (No Field Current)!No Field Current but have DPE. No field current during undervoltage alarm.!Possible cause: Wire loose, brush failure
 1905!ALARM!Undervoltage (Low Speed)!Generator running underspeed for > 30 seconds when undervoltage alarm set!Possible cause: fuel injectors, air intake blocked, fuel supply, other engine failures
 1906!ALARM!Undervoltage (Single Zero Cross missing)!Undervoltage due to faulty excitation winding, zero cross circuit, or circuit in general. One zero cross missing for greater than 1.5 seconds!Possible cause: field boost hardware failure
 2099!ALARM!Wiring Error!Connection low voltage and high voltage wires are crossed. Incorrect DC AC wiring hook up. !Check connection in generator
+2098!ALARM!Wiring Error!Check Connections in generator. !Check connection in generator
 2100!ALARM!Overload Remove Load (Default, Output Current Method)!Unit is overloaded, one of the two CTs is detecting an overload condition.!Check transfer switch loadshed functionality. (Change load dynamics or utilize loadshed). Remove Load
 2101!ALARM!Overload (Remove Load)!Overload (DPE Style Field Current Method) Field Current measured value is above threshold! Possible cause: Overload
 2102!ALARM!Overload (Remove Load)!Unit recranks 5 times when load is applied, engine dies (0 RPM) and has low voltage (< 180V)!Check for Overloaded condition on unit. Inspect stepper motor operation.
@@ -57,6 +58,7 @@
 
 ######## Gas Only##############################
 2600!ALARM!Ignition!Default Ignition Error! No further description
+2602!ALARM!Ignition Fault!Ignition Fault! No further description
 2601!ALARM!Ignition (Missing Cam)!Missing Cam - Cam pulses missing for 5 seconds! No further description
 2601!ALARM!Ignition (Crank Circuit)!Crank Circuit (External Module)! No further description
 
@@ -109,7 +111,7 @@
 2710!WARNING!Ruptured Tank!The system detected fuel in the outer basin tank and has triggered the warning.!Ruptured or leaky tank or bad sensor
 2730!WARNING!Exercise Not Set!Exercise has never been set!No further description
 2750!WARNING!Low Battery!Battery voltage below 12.1V for greater than 60 seconds!No further description
-2760!WARNING!Battery Problem!Completed 26 hour charge cycle, battery volt- age below 12.52V or current draw from charger still greater than 600mA!No further description
+2760!WARNING!Battery Problem!Completed 26 hour charge cycle, battery voltage below 12.52V or current draw from charger still greater than 600mA!No further description
 2770!WARNING!Charger Warning!Battery voltage above 16.1V!No further description
 2780!WARNING!Charger Missing AC!During charging, AC input to battery charger missing for greater than 5 minutes!No further description
 2790!WARNING!SEEPROM Abuse!Controller wrote to the EEPROM more than 500 times in less than 4 minutes!No further description
@@ -124,3 +126,9 @@
 #1600!ALARM!Underspeed!The engine never comes up to 3700 RPM.!Check fuel selection and fuel supply.
 #2102!ALARM!Overload Remove Load!Overloaded!Unit re-cranks 5 times when load is applied, engine dies (0 RPM) and has low voltage (< 180V) Check for Overloaded condition on unit. Inspect stepper motor operation.
 #2103!ALARM!Overload Remove Load!Unit has run and attempted to accept load 10 times, could not accept due to overload condition.!Check for Overloaded condition on unit
+
+
+## Validated on 4.5L Evolution Controller
+3201!ALARM!Fuel Delivery Pressure!Fuel Delivery Pressure!Fuel Delivery Pressure
+3217!ALARM!Fuel Delivery Pressure!Fuel Delivery Pressure!Fuel Delivery Pressure
+3003!ALARM!ECU Faulted!ECU Faulted!ECU Faulted

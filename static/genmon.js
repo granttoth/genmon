@@ -5,13 +5,13 @@ var currentbaseState = "READY"; // menus change on this var
 var switchState = "Auto";        // updated on a time
 var currentClass = "active";    // CSS class for menu color
 var menuElement = "status";
-var ajaxErrors = {errorCount: 0, lastSuccessTime: 0, log: ""};
+var ajaxErrors = {errorCount: 0, lastSuccessTime: moment(), log: ""};
 var windowActive = true;
 var latestVersion = "";
 var lowbandwidth = false;
 var resizeTimeout;
 
-var myGenerator = {sitename: "", nominalRPM: 3600, nominalfrequency: 60, Controller: "", model: "", nominalKW: 22, fueltype: "", UnsentFeedback: false, SystemHealth: false, EnhancedExerciseEnabled: false, OldExerciseParameters:[-1,-1,-1,-1,-1,-1]};
+var myGenerator = {sitename: "", nominalRPM: 3600, nominalfrequency: 60, Controller: "", model: "", nominalKW: 22, fueltype: "", UnsentFeedback: false, SystemHealth: false, EnhancedExerciseEnabled: false, LoginActive: false, OldExerciseParameters:[-1,-1,-1,-1,-1,-1]};
 var regHistory = {updateTime: {}, _10m: {}, _60m: {}, _24h: {}, historySince: "", count_60m: 0, count_24h: 0};
 var kwHistory = {data: [], plot:"", kwDuration: "h", tickInterval: "10 minutes", formatString: "%H:%M", defaultPlotWidth: 4, oldDefaultPlotWidth: 4};
 var prevStatusValues = {};
@@ -20,8 +20,10 @@ var baseurl = pathname.concat("cmd/");
 var DaysOfWeekArray = ["Sunday","Monday","Tuesday","Wednesday", "Thursday", "Friday", "Saturday"];
 var MonthsOfYearArray = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 var BaseRegistersDescription = {};
+var QR_Code_URL = "";
 
 vex.defaultOptions.className = 'vex-theme-os'
+
 
 //*****************************************************************************
 var UAbrowser = (function(){
@@ -53,8 +55,7 @@ function isMobileBrowser() {
     return false;
   }
 }
-console.log(UAbrowser)
-
+// console.log(UAbrowser)
 
 //*****************************************************************************
 // called on window.onload
@@ -105,7 +106,11 @@ function processAjaxError(xhr, ajaxOptions, thrownError) {
     // alert(thrownError);
     ajaxErrors["errorCount"]++;
     if (ajaxErrors["errorCount"]>5) {
-      var tempMsg = '<b><span style="font-size:14px">Disconnected from server</span></b><br>'+ajaxErrors["errorCount"]+' messages missed since '+ajaxErrors["lastSuccessTime"].format("H:mm:ss")+"</b><br><br>"+((ajaxErrors["log"].length>500) ? ajaxErrors["log"].substring(0, 500)+"<br>[...]" : ajaxErrors["log"]);
+      var lastSuccessTime = "N/A"
+      if (ajaxErrors["lastSuccessTime"] != undefined) {
+         lastSuccessTime = ajaxErrors["lastSuccessTime"].format("H:mm:ss")
+      }
+      var tempMsg = '<b><span style="font-size:14px">Disconnected from server</span></b><br>'+ajaxErrors["errorCount"]+' messages missed since '+lastSuccessTime+"</b><br><br>"+((ajaxErrors["log"].length>500) ? ajaxErrors["log"].substring(0, 500)+"<br>[...]" : ajaxErrors["log"]);
       $("#footer").addClass("alert");
       $("#ajaxWarning").show(400);
       $('#ajaxWarning').tooltipster('content', tempMsg);
@@ -226,8 +231,8 @@ function CreateMenu() {
     var outstr = '';
 
     SetHeaderValues();
-    $("#footer").html('<table border="0" width="100%" height="30px"><tr><td width="5%"><img class="tooltip alert_small" id="ajaxWarning" src="images/transparent.png" height="28px" width="28px" style="display: none;"></td><td width="90%"><a href="https://github.com/jgyates/genmon" target="_blank">GenMon Project on GitHub</a></td><td width="5%"></td></tr></table>');
-    $('#ajaxWarning').tooltipster({minWidth: '280px', maxWidth: '480px', animation: 'fade', updateAnimation: 'null', contentAsHTML: 'true', delay: 100, animationDuration: 200, side: ['top', 'left'], content: "No Communicatikon Errors occured"});
+    $("#footer").html('<table border="0" width="100%" height="30px"><tr><td width="5%"><img class="tooltip alert_small" id="ajaxWarning" src="images/transparent.png" height="28px" width="28px" style="display: none;"></td><td width="90%"><a href="https://github.com/jgyates/genmon" target="_blank">GenMon Project on GitHub</a></td><td width="5%" id="footerWeather" valign="middle" nowrap></td></tr></table>');
+    $('#ajaxWarning').tooltipster({minWidth: '280px', maxWidth: '480px', animation: 'fade', updateAnimation: 'null', contentAsHTML: 'true', delay: 100, animationDuration: 200, side: ['top', 'left'], content: "No Communication Errors occured"});
 
     if (myGenerator["pages"]["status"] == true)
        outstr += '<li id="status"><a><table width="100%" height="100%"><tr><td width="28px" align="right" valign="middle"><img class="status" src="images/transparent.png" width="20px" height="20px"></td><td valign="middle">&nbsp;Status</td></tr></table></a></li>';
@@ -428,7 +433,9 @@ function json2html(json, indent, parentkey) {
           console.log("no property of key in json2html: " + key);
           return outstr
         }
-        if (json[key].constructor === Array) {
+        if (json[key] === null) {
+          outstr += indent + key + ' : ' + getItem(json[key], key); //parentkey);
+        } else if (json[key].constructor === Array) {
             if (json[key].length > 0) {
               outstr += "<br>" + indent + key + ' :<br>';   // + json2html(json[key], indent, key);
               for (var i = 0; i < json[key].length; ++i) {
@@ -437,6 +444,10 @@ function json2html(json, indent, parentkey) {
                 } else {
                   outstr += indent + "&nbsp;&nbsp;&nbsp;&nbsp;" +  getItem(json[key][i], key);
                 }
+              }
+              // Added for better formatting 
+              if (json[key].length > 1){
+                outstr+= "<br>"
               }
             }
         } else if (typeof json[key] === 'object') {
@@ -687,7 +698,7 @@ function DisplayMaintenance(){
     var url = baseurl.concat("maint_json");
     $.ajax({dataType: "json", url: url, timeout: 4000, error: processAjaxError, success: function(result){
         processAjaxSuccess();
-
+        useIdealFormsOnMaintPage = false;
         outstr = '<div style="clear:both" id="maintText">' + json2html(result, "", "root") + '</div>';
 
         if (myGenerator["write_access"] == true) {
@@ -732,9 +743,10 @@ function DisplayMaintenance(){
                outstr += '&nbsp;&nbsp;<button id="setexercisebutton" onClick="saveMaintenance();">Set Exercise Time</button>';
             }
 
-            outstr += '<br><br>Generator Time:<br><br>';
-            outstr += '&nbsp;&nbsp;<button id="settimebutton" onClick="SetTimeClick();">Set Generator Time</button>';
-
+            if (myGenerator['SetGenTime'] == true) {
+              outstr += '<br><br>Generator Time:<br><br>';
+              outstr += '&nbsp;&nbsp;<button id="settimebutton" onClick="SetTimeClick();">Set Generator Time</button>';
+            }
             if (myGenerator['RemoteCommands'] == true) {
                outstr += '<br><br>Remote Commands:<br><br>';
                outstr += '&nbsp;&nbsp;&nbsp;&nbsp;<button class="tripleButtonLeft" id="remotestop" onClick="SetClick(\'stop\');">Stop Generator</button>';
@@ -763,13 +775,42 @@ function DisplayMaintenance(){
             }
 
             if (myGenerator['PowerGraph'] == true) {
-               outstr += '<br>Reset:<br><br>';
+               outstr += '<br><br>Reset:<br><br>';
                outstr += '&nbsp;&nbsp;<button id="settimebutton" onClick="SetPowerLogReset();">Reset Power Log & Fuel Estimate</button>';
             }
-
+            try{
+              if (("buttons" in myGenerator) && !(myGenerator['buttons'].length === 0)) {
+                outstr += '<br><br>Generator Functions:<br><br>';
+                for (let index in myGenerator['buttons']) {
+                  button = myGenerator['buttons'][index];
+                  button_command = button["onewordcommand"];
+                  button_title = button["title"];
+                  command_sequence = button["command_sequence"];
+                  
+                  if ((command_sequence.length >= 1) && (command_sequence[0].hasOwnProperty("input_title"))){
+                    // this button has an input
+                    outstr += setupCommandButton(button);
+                    useIdealFormsOnMaintPage = true;
+                  } else {
+                    // This is just a button, no input from the user.
+                    outstr += '&nbsp;&nbsp;<button id=' + button_command + ' onClick="SetClick(\'' + button_command + '\');">' + button_title + '</button><br><br>';
+                  }
+                }
+              }
+            } catch(err){
+              console.log("Error parsing buttons: " + err)
+            }
+            
         }
-
             $("#mydisplay").html(outstr);
+            if (useIdealFormsOnMaintPage){
+              // if we had any buttons using tooltips then do this
+              $('form.idealforms').idealforms({
+                tooltip: '.tooltip',
+                silentLoad: true,
+              });
+
+            }
 
         if (myGenerator["write_access"] == true) {
 
@@ -785,6 +826,438 @@ function DisplayMaintenance(){
         }
 
    }});
+}
+
+//*****************************************************************************
+// called to setup button for a command_sequence
+//*****************************************************************************
+function setupCommandButton(button){
+  try{
+    var outstr = "";
+    var button_command = button["onewordcommand"];
+    var button_title = button["title"];
+    var command_sequence = button["command_sequence"];
+    var button_id = 'button_' + button_command;
+    var clickCallback = "onCommandButtonClick(\'" + button_command + "\')";
+
+    
+    outstr += '<form class="idealforms" novalidate  autocomplete="off" id="formButtons">';
+    outstr += '<table>';
+    
+    // loop thru the list of commands in command_sequence
+    for (let cmdidx in command_sequence){
+      // cycle through each command in command_sequence
+      outstr += '<tr>'
+      
+      if (cmdidx == 0){
+        outstr += '<td>';
+        outstr += '&nbsp;&nbsp;';
+        // NOTE: type="button" is required or the ideal forms code will crash
+        outstr += '<button class="button" type="button" id="' + button_id + '" style="background:#bbbbbb;color:#000000;float:none" onclick="' + clickCallback + ';" > ' + button_title + '</button>';
+        outstr += '</td>';
+      }
+      else{
+        outstr += '<td></td>';  // empty table cell
+      }
+      outstr += '<td>';
+      // div for ideamfrom must go in table data element
+      outstr += '<div class="field idealforms-field idesforms-text-field style="clear:both">';
+      command = command_sequence[cmdidx]
+      if ((command.hasOwnProperty("input_title")) && (command.hasOwnProperty("type"))) {
+        title = command["input_title"];
+        type = command["type"];
+        tooltip = ""
+        bounds = ""
+        if (command.hasOwnProperty("bounds_regex")){
+          bounds = command["bounds_regex"];
+        }
+        if (command.hasOwnProperty("tooltip")){
+          tooltip = command["tooltip"];
+        }
+        var default_value = 0;
+        outstr += setupInputBoxForButton(cmdidx, button_command, type, title, default_value, tooltip, bounds );
+      }
+      else{
+        console.log("Error: button command_sequence does not have both 'input_title' and 'type'.");
+      }
+      outstr += '</div>';
+      outstr += '</td>';
+      outstr += '</tr>'
+    }
+
+    // if we added a control then go to the next line
+    outstr += '</table>';
+    outstr += '</form>'
+    outstr += '<br>';
+    
+    return outstr;
+  }
+  catch(err){
+    console.log("Error in setupCommandButton: " + err);
+    return "";
+  }
+}
+//*****************************************************************************
+// called to setup input button
+//*****************************************************************************
+function setupInputBoxForButton(identifier, parent, type, title, default_value, tooltip, bounds_regex ) {
+
+  var outstr = ""
+  try {
+
+    if (!(type === "int")){
+      // at the moment only "int" is supported
+      console.log("Error in setupInputBoxForButton: only type 'int' supported at the moment.")
+      return outstr;
+    }
+    var id = parent + "_" + identifier
+    var input_id = "input_"+ id;
+    // used for forms
+    var changeCallback = "validateInputButton(\'change\', \'" + identifier + "\', \'" + parent + "\', \'" + bounds_regex + "\')";
+    var rulename = input_id + '_rule'
+    var validation = rulename;
+
+    outstr += '&nbsp;&nbsp;';
+    outstr += '<input id="' + input_id +  '" style="width: 150px;clear:both;float:none" autocomplete="off" name="' + input_id + '" type="text" ';
+    outstr += ' onChange="' + changeCallback + ';" ';
+    outstr += (((typeof validation === 'undefined') || (validation==0)) ? 'onFocus="$(\'#'+input_id+'_tooltip\').show();" onBlur="$(\'#'+input_id+'_tooltip\').hide();" ' : 'data-idealforms-rules="' + validation + '" ') ;
+
+    outstr += '>';  // end input box
+    outstr += '&nbsp; ' + title;
+
+    outstr += '<span class="error" style="display: none;"></span>';
+    outstr += (((typeof tooltip !== 'undefined' ) && (tooltip.trim() != "")) ? '<span id="' + input_id + '_tooltip" class="tooltip" style="display: none;">' + replaceAll(tooltip, '"', '&quot;') + '</span>' : "");
+
+    //add the regex as a rule for idealforms
+    $.extend($.idealforms.rules, {
+      [rulename]:  function(input, value, arg1, arg2) {
+        var regex = RegExp(bounds_regex, 'g');
+        return regex.test(value);
+      }
+    });
+    $.extend($.idealforms.errors, {
+      [rulename]: tooltip
+    });
+
+    outstr += '<br>';
+    return outstr;
+  }
+  catch(err) {
+    console.log("Error in setupInputBoxForButton: " + err);
+  }
+  return outstr;
+}
+
+//*****************************************************************************
+// given a button one word command, retrieve the containing button object
+//*****************************************************************************
+function getButtonFromCommand(onewordcommand){
+
+    if (("buttons" in myGenerator) && !(myGenerator['buttons'].length === 0)) {
+      // cycle thru the buttons in our list
+      for (let index in myGenerator['buttons']) {
+        button = myGenerator['buttons'][index];
+        button_command = button["onewordcommand"];
+        if (onewordcommand == button_command){
+          return button;
+        }
+      }
+    }
+    // did not find the button requested
+    console.log("Error in getButtonCommand: button not found: " + onewordcommand)
+    return null;
+}
+//*****************************************************************************
+// called when sending button input to genmon
+//*****************************************************************************
+function sendButtonCommand(button_object)
+{
+  try{
+      if ((!(button_object.hasOwnProperty("onewordcommand"))) || 
+          (!(button_object.hasOwnProperty("title"))) ||
+          (!(button_object.hasOwnProperty("command_sequence"))))
+      {
+        console.log("Error: invalid  of button object.");
+        return false;
+      }
+      // set button command
+      // the button_object is one of the button elemnts in the list
+      // the input to set_button_command is a list of button objects
+      // only send the buttons in the list that you want to the commands
+      // to be sent.
+      // myGenerator['buttons'] list with the 'value' property added 
+      // to the command_sequence, 
+      // e.g. myGenerator['buttons'][0]['command_sequence][0]['value'] = user defined input
+      var error_occured = false;
+      var input =  JSON.stringify([button_object]);
+      var url = baseurl.concat("set_button_command");
+      $.getJSON(  url,
+                  {set_button_command: input},
+                  function(result){
+          // result should be either "OK" or error string.
+          if (result !== "OK"){
+            console.log("Error: failure sending set_button_command: " + result);
+            error_occured = true;
+            return false;
+          }
+      });
+      return (error_occured == false);
+  }
+  catch (err){
+    console.log("Error in setButonCommand: " + err);
+    return false;
+  }
+}
+
+//*****************************************************************************
+//
+//*****************************************************************************
+function onCommandButtonClick(onewordcommand){
+
+    try{
+      
+      var button = getButtonFromCommand(onewordcommand);
+      if (button == null){
+        console.log("Error in onCommandButtonClick: button object not found.");
+        return false;
+      }
+      var button_title = button["title"];
+
+      if (!validateButtonCommand(onewordcommand)){
+        return false;
+      }
+
+      
+      DisplayStrAnswer = false;
+      msg = 'Issue generator command: ' + button_title + '?<br><span class="confirmSmall">Are you sure you want to isssue this command?</span>';
+
+      var DisplayStrButtons = {
+        NO: {
+          text: 'Cancel',
+          type: 'button',
+          className: 'vex-dialog-button-secondary',
+          click: function noClick () {
+            DisplayStrAnswer = false
+            this.close()
+          }
+        },
+        YES: {
+          text: 'OK',
+          type: 'submit',
+          className: 'vex-dialog-button-primary',
+          click: function yesClick () {
+            DisplayStrAnswer = true
+          }
+        }
+    }
+      
+    vex.dialog.open({
+      unsafeMessage: msg,
+      overlayClosesOnClick: false,
+      buttons: [
+        DisplayStrButtons.YES,
+        DisplayStrButtons.NO
+      ],
+      onSubmit: function(e) {
+        if (DisplayStrAnswer) {
+          DisplayStrAnswer = false; // Prevent recursive calls.
+          e.preventDefault();
+          issueButtonCommand(onewordcommand);
+          var DisplayStr1 = 'Sending Command '+button_title +'...';
+          var DisplayStr2 = '<div class="progress-bar"><span class="progress-bar-fill" style="width: 0%"></span></div>';
+          $('.vex-dialog-message').html(DisplayStr1);
+          $('.vex-dialog-buttons').html(DisplayStr2);
+          $('.progress-bar-fill').queue(function () {
+                $(this).css('width', '100%')
+          });
+          setTimeout(function(){
+              vex.closeAll();
+              //gotoLogin();
+          }, 5000);
+          }
+        }
+      });
+      return true;
+    }
+
+    catch(err){
+      console.log("Error in onCommandButton: " + err);
+      return false;
+    }
+}
+//*****************************************************************************
+//
+//*****************************************************************************
+function validateButtonCommand(onewordcommand){
+  try{
+    // here we want to loop thru the command_sequence arrary, getting the 
+    // data for each input box it corrosponds to, validate the data with the
+    // bounds_regex parameter, if it exists. 
+    var button = getButtonFromCommand(onewordcommand);
+    if (button == null){
+      console.log("Error in validateButtonCommand: button object not found.");
+      return false;
+    }
+    var button_title = button["title"];
+    var command_sequence = button["command_sequence"];
+    // loop thru the list of commands in command_sequence
+    for (let cmdidx in command_sequence){
+      // cycle through each command in command_sequence
+      command = command_sequence[cmdidx];
+      if ((command.hasOwnProperty("input_title")) && (command.hasOwnProperty("type"))) {
+        title = command["input_title"];
+        bounds = ""
+        if (command.hasOwnProperty("bounds_regex")){
+          bounds = command["bounds_regex"];
+        }
+        var input_id = "input_"+ onewordcommand + "_" + cmdidx;
+        var value = document.getElementById(input_id).value;
+        if (!(validateRegEx(value, bounds, dialog_on_error = true))){
+          return false;
+        }
+      }
+      else{
+        console.log("Error in validateButtonCommand: button command_sequence does not have both 'input'title' and 'type': " + button_title);
+        return false;
+      }
+    }
+    return true;
+  }
+  catch(err){
+    console.log("Error in validateButtonCommand: " + err);
+      return false;
+  }
+}
+//*****************************************************************************
+//
+//*****************************************************************************
+function issueButtonCommand(onewordcommand){
+  try{
+      // here we want to loop thru the command_sequence arrary, getting the 
+      // data for each input box it corrosponds to, then write the value to the entry in 
+      // the command_sequence and send the entire command_button object to genmon.
+      var original_button = getButtonFromCommand(onewordcommand);
+      if (original_button == null){
+        console.log("Error in issueButtonCommand: button object not found.");
+        return false;
+      }
+      let button = { ...original_button };    // clone the button object
+      var button_title = button["title"];
+      var command_sequence = button["command_sequence"];
+      // loop thru the list of commands in command_sequence
+      for (let cmdidx in command_sequence){
+        // cycle through each command in command_sequence
+        command = command_sequence[cmdidx];
+        if ((command.hasOwnProperty("input_title")) && (command.hasOwnProperty("type"))) {
+          title = command["input_title"];
+          type = command["type"];
+
+          var input_id = "input_"+ onewordcommand + "_" + cmdidx;
+          var value = document.getElementById(input_id).value;
+          if (type == "int"){
+            // write the value to the object
+            command['value'] = parseInt(value);
+          }
+          else {
+            console.log("Error: unsupported type in issueButtonCommand: " + type + ", " + button_title);
+            return false;
+          }
+        }
+        else{
+          console.log("Error in issueButtonCommand: button command_sequence does not have both 'input'title' and 'type': " + button_title);
+          return false;
+        }
+      }
+      // now send the button to genmon for writing 
+      // for now we only send one button at a time. 
+      sendButtonCommand(button);
+  }
+  catch(err){
+      console.log("Error in issueButtonCommand: " + err);
+      return false;
+  }
+}
+//*****************************************************************************
+// called when validating input button
+// action is "validate", "click" or "change"
+//  click - validate and send data
+//  validate - check data and send mesage to user on invalid data
+//  change - check the data, return true if data OK, otherwise false
+// identifier is the index of the command_sequence in a given button object
+// parent is the 'onewordcommand' of the parent
+// bounds_regex is the regular expession string to bounds check the input 
+//*****************************************************************************
+function validateInputButton(action, identifier, parent, bounds_regex){
+
+    //console.log("Input Validation called: " + action + ", " + identifier + ", " + parent)
+
+    try{
+      // TODO this only does one input now. need to read (and validate) all inputs 
+      // and fill them into the command_sequence then send them to genmon
+      // the function parameter bounds_regex should be changed as this will come from the 
+      // button_object.command_sequence array entries 
+      var button_object = getButtonFromCommand(parent);
+      if (button_object == null){
+        console.log("Error in validateInputButton: button object not found.");
+        return false;
+      }
+      var button_title = button_object['title'];
+      // get the input value for the corrosponding button
+      var id = parent + "_" + identifier
+      var input_id = "input_"+ id;
+      var value = document.getElementById(input_id).value
+      
+      switch (action) {
+        case "validate":
+        case "change":
+          return validateRegEx(value, bounds_regex, dialog_on_error = (action === "validate"));
+        case "click":
+          if (!(validateInputButton("validate", identifier, parent, bounds_regex))){
+            return false;
+          }
+          // send data to genmon
+          return true;
+        default:
+          console.log("Error: Invalid action in validateInputButton!");
+          return false;
+      }
+    }
+    catch(err){
+      console.log("Error in validateInputButton: " + err);
+      return false;
+    }
+    return false;
+}
+//*****************************************************************************
+// validate a value with a regex string, return true or false
+//*****************************************************************************
+function validateRegEx(value, bounds_regex, dialog_on_error = true){
+  try{
+    var bounds = new RegExp(bounds_regex);
+    if (!(bounds.test(value))){
+      if (dialog_on_error){
+        GenmonAlert("The input is invalid for this parameter.");
+      }
+      return false;
+    }
+    return true;
+  }
+  catch(err){
+    console.log("Error in validateRegEx: " + bounds_regex + ": " + err);
+    return false;
+  }
+}
+//*****************************************************************************
+// submit for button commands
+//*****************************************************************************
+function submitButton(ctlid, identifier, parent){
+  try{
+    console.log("ID:" + ctlid + ", Index: " + identifier+ ", Parent: " + parent )
+    //console.log("value: " + document.getElementById(ctlid).value)
+  }
+  catch(err){
+    console.log("Error in submitButton: " + err)
+  }
 }
 
 //*****************************************************************************
@@ -854,6 +1327,14 @@ function SetClick(cmd){
        case "ackalarm":
           msg = 'Acknowledge generator alarm?<br><span class="confirmSmall">Are you sure you want to acknowledge the alarm condition on your generator?</span>';
           break;
+       default:
+          button = getButtonFromCommand(cmd);
+          if (button == null){
+            console.log("Error in SetClick: button object not found.");
+            return;
+          }
+          button_title = button['title']
+          msg = 'Issue generator command: ' + button_title + '?<br><span class="confirmSmall">Are you sure you want to isssue this command?</span>';
     }
 
     vex.dialog.confirm({
@@ -1036,8 +1517,13 @@ function saveMaintenance(){
         var strChoice       = ((myGenerator['EnhancedExerciseEnabled'] == true) ? $("#ExerciseFrequency").val() : "Weekly");
         var strExerciseTime = strDays + "," + strHours + ":" + strMinutes + "," + strChoice;
 
+        var DisplayMsg = "Set exercise time to<br>" + strExerciseTime + ", " + strQuiet + "?";
+
+        if (myGenerator['WriteQuietMode'] == false) {
+            DisplayMsg = "Set exercise time to<br>" + strExerciseTime + "?";
+        }
         vex.dialog.confirm({
-            unsafeMessage: "Set exercise time to<br>" + strExerciseTime + ", " + strQuiet + "?",
+            unsafeMessage: DisplayMsg,
             overlayClosesOnClick: false,
             callback: function (value) {
                  if (value == false) {
@@ -1049,7 +1535,7 @@ function saveMaintenance(){
                                 {setexercise: strExerciseTime},
                                 function(result){});
 
-                    // set quite mode
+                    // set quiet mode
                     if (myGenerator['WriteQuietMode'] == true) {
                       var url = baseurl.concat("setquiet");
                       $.getJSON(  url,
@@ -1067,60 +1553,105 @@ function saveMaintenance(){
 }
 
 //*****************************************************************************
-// Display the Logs Tab
+// Display Logs
 //*****************************************************************************
 function DisplayLogs(){
 
-    var url = baseurl.concat("logs");
+    var url = baseurl.concat("logs_json");
     $.ajax({dataType: "json", url: url, timeout: 4000, error: processAjaxError, success: function(result) {
         processAjaxSuccess();
-
-        var outstr = '<center><div id="annualCalendar"></div></center>';
-        outstr += replaceAll(replaceAll(result,'\n','<br/>'),' ','&nbsp');  // replace space with html friendly &nbsp
-
-        $("#mydisplay").html(outstr);
-
-        if (lowbandwidth == false) {
+        try{
+            var LogData = result;
+            var outstr = '<center><div id="annualCalendar"></div></center>';
+            outstr += json2html(result, "", "root");
+            $("#mydisplay").html(outstr);
+            if (!(lowbandwidth == false)){
+              // don't display heat map
+              return
+            }
+        }
+        catch(err){
+          console.log("Error in DisplayLogs (log display):" + err)
+          return 
+        }
+        // check myGenerator[“AltDateformat”] == true to change date format from mm/dd/yyyy to dd/mm/yyyy
+        // so heat map can parse the data correctly
+        try{
+          var severity = 0;
+          var months = 1;
           var date = new Date();
           var data_helper = {};
-          var months = 1;
-          var loglines = result.split('\n');
-          var severity = 0;
-          for(var i = 0;i < loglines.length;i++){
-            if (loglines[i].indexOf("Alarm Log :") >= 0) {
-               severity = 3;
-            } else if (loglines[i].indexOf("Service Log :") >= 0) {
-               severity = 2;
-            } else if (loglines[i].indexOf("Run Log :") >= 0) {
-               severity = 1;
-            } else {
-               var matches = loglines[i].match(/^\s*(\d+)\/(\d+)\/(\d+) (\d+:\d+:\d+) (.*)$/i)
-               if ((matches != undefined) && (matches.length == 6)) {
-                  if ((12*matches[3]+1*matches[1]+12) <= (12*(date.getYear()-100) + date.getMonth() + 1)) {
-                  } else if (data_helper[matches.slice(1,3).join("/")] == undefined) {
-                      data_helper[matches.slice(1,3).join("/")] = {count: severity, date: '20'+matches[3]+'-'+matches[1]+'-'+matches[2], dateFormatted: matches[2]+' '+MonthsOfYearArray[(matches[1] -1)]+' 20'+matches[3], title: matches[5].trim()};
-                      if (((12*(date.getYear()-100) + date.getMonth() + 1)-(12*matches[3]+1*matches[1])+1) > months) {
-                          months = (12*(date.getYear()-100) + date.getMonth() + 1)-(12*matches[3]+1*matches[1])+1
-                      }
-                  } else {
-                      data_helper[matches.slice(1,3).join("/")]["title"] = data_helper[matches.slice(1,3).join("/")]["title"] + "<br>" + matches[5].trim();
-                      if (data_helper[matches.slice(1,3).join("/")]["count"] < severity)
-                         data_helper[matches.slice(1,3).join("/")]["count"] = severity;
-                  }
-               }
-            }
+          for (const [logname, logarray] of Object.entries(LogData["Logs"])) {
+            //console.log(`${logname}: `);
+            if (logname.toLowerCase().includes("alarm")){  // ALARM log
+              severity = 3;
+            } else if(logname.toLocaleLowerCase().includes("service")){ // service log
+              severity = 2;
+            } else if(logname.toLocaleLowerCase().includes("run")){   // run log
+              severity = 1;
+            };
+              
+            for (entry of logarray) {
+              //console.log(entry);
+              var matches = entry.match(/^\s*(\d+)\/(\d+)\/(\d+) (\d+:\d+:\d+) (.*)$/i);
+              if ((matches == undefined) || (matches.length != 6)) {
+                continue;
+              }
+              // e.g. matches =  ["07/17/23 08:58:25 Switched Off", "07", "17", "23", "08:58:25", "Switched Off"]
 
-          }
+              var MM;
+              var DD; 
+              var YY;
+              if (myGenerator["AltDateformat"] == true){
+                // DD/MM/YYYY
+                MM = matches[2]
+                DD = matches[1]
+                YY = matches[3]
+              }
+              else{
+                // MM/DD/YYYY
+                MM = matches[1]
+                DD = matches[2]
+                YY = matches[3]
+              };
+              var logtext = matches[5].trim()
+              var entrydate = YY + '/' + MM + '/' + DD;
+              if ((12 * YY + 1 * MM + 12) <= (12*(date.getYear()-100) + date.getMonth() + 1)) {
+                // date before our cutoff
+                continue;
+              } 
+              if(data_helper[entrydate] == undefined){
+                // no entry for this date yet so add one
+                MonthIndex = parseInt(MM) - 1
+                formatteddate = DD+' ' + MonthsOfYearArray[MonthIndex] + ' 20'+YY
+                data_helper[entrydate] = {count: severity, date: '20'+YY+'-'+MM+'-'+DD, dateFormatted: formatteddate, title: logtext};
+                if (((12*(date.getYear()-100) + date.getMonth() + 1)-(12 * YY + 1 * MM) + 1) > months) {
+                  months = (12 * (date.getYear()-100) + date.getMonth() + 1) - (12 * YY + 1 * MM) + 1;
+                }
+              }
+              else{
+                // already an entry for this date
+                data_helper[entrydate]["title"] = data_helper[entrydate]["title"] + "<br>" + logtext;
+                if (data_helper[entrydate]["count"] < severity)
+                   data_helper[entrydate]["count"] = severity;
+              }
+            };
+          };
+
           var data = Object.keys(data_helper).sort().map(function(itm) { return data_helper[itm]; });
-          // var data = Object.keys(data_helper).map(itm => data_helper[itm]);
-          // var data = Object.values(data_helper);
-          // console.log(data);
-          var options = {coloring: 'genmon', start: new Date((date.getMonth()-12 < 0) ? date.getYear() - 1 + 1900 : date.getYear() + 1900, (date.getMonth()-12 < 0) ? date.getMonth()+1 : date.getMonth()-12, 1), end: new Date(date.getYear() + 1900, date.getMonth(), date.getDate()), months: months, labels: { days: true, months: true, custom: {monthLabels: "MMM 'YY"}}, tooltips: { show: true, options: {}}, legend: { show: false}};
+          var options = {coloring: 'genmon',
+                         start: new Date((date.getMonth()-12 < 0) ? date.getYear() - 1 + 1900 : date.getYear() + 1900, (date.getMonth()-12 < 0) ? date.getMonth()+1 : date.getMonth()-12, 1),
+                         end: new Date(date.getYear() + 1900, date.getMonth(), date.getDate()) ,
+                         months: months, lastMonth: date.getMonth()+1, lastYear: date.getYear() + 1900,
+                         labels: { days: true, months: true, custom: {monthLabels: "MMM 'YY"}}, tooltips: { show: true, options: {}}, legend: { show: false}};
           $("#annualCalendar").CalendarHeatmap(data, options);
+        }  // end try
+        catch(err){
+          console.log("Error in DisplayLogs (heatmap display):" + err)
+          return
         }
-   }});
+      }});
 }
-
 //*****************************************************************************
 // Display the Monitor Tab
 //*****************************************************************************
@@ -1196,7 +1727,7 @@ function DisplayNotifications(){
     $.ajax({dataType: "json", url: url, timeout: 4000, error: processAjaxError, success: function(result){
         processAjaxSuccess();
 
-        var  outstr = 'Notification Recepients:<br><br>';
+        var  outstr = 'Notification Recipients:<br><br>';
         outstr += '<form id="formNotifications">';
         outstr += '<table id="allnotifications" border="0"><tbody>';
 
@@ -1305,7 +1836,7 @@ function saveNotifications(){
         }
     });
     if (blankEmails > 0) {
-       GenmonAlert("Recepients cannot be blank.<br>You have "+blankEmails+" blank lines.");
+       GenmonAlert("Recipients cannot be blank.<br>You have "+blankEmails+" blank lines.");
        return
     }
 
@@ -1321,12 +1852,14 @@ function saveNotifications(){
              DisplayStrAnswer = false; // Prevent recursive calls.
              e.preventDefault();
              saveNotificationsJSON();
+             var DisplayStr1 = 'Saving...';
              var DisplayStr2 = '<div class="progress-bar"><span class="progress-bar-fill" style="width: 0%"></span></div>';
+             $('.vex-dialog-message').html(DisplayStr1);
              $('.vex-dialog-buttons').html(DisplayStr2);
              $('.progress-bar-fill').queue(function () {
                   $(this).css('width', '100%')
              });
-             setTimeout(function(){ vex.closeAll();}, 10000);
+             setTimeout(function(){ vex.closeAll();gotoLogin();}, 10000);
            }
         }
     })
@@ -1363,14 +1896,14 @@ function saveNotificationsJSON(){
 // Display the Journal Tab
 //*****************************************************************************
 
-// Additional Carriers are listed here: https://teamunify.uservoice.com/knowledgebase/articles/57460-communication-email-to-sms-gateway-list
-
 function DisplayJournal(){
     var url = baseurl.concat("get_maint_log_json");
+    var allJournalEntries
     $.ajax({dataType: "json", url: url, timeout: 4000, error: processAjaxError, success: function(result){
         processAjaxSuccess();
+        allJournalEntries = result
 
-        var  outstr = 'Journal Entires:<br><br>';
+        var  outstr = 'Journal Entries:<br><br>';
         outstr += '<table id="alljournal" border="0" style="border-collapse: separate; border-spacing: 10px;" width="100%"><tbody>';
 
         $.each(Object.keys(result), function(i, key) {
@@ -1379,26 +1912,43 @@ function DisplayJournal(){
         outstr += '</tbody></table><br>';
         outstr += '<button value="+Add" id="addJournalRow">+Add</button>';
         outstr += '<br><br><button value="Clear" id="clearJournal">Clear Journal</button>';
+        outstr += '<br><br><button value="Print" id="printJournal">Print Journal</button>';
 
         $("#mydisplay").html(outstr);
 
-        var rowcount = Object.keys(result).length;
+        $(".edit#editJournalRow").on('click', function() {
+           id = $(this).attr("row");
+           var outstr = emptyJournalLine("amend", id, allJournalEntries[id]["date"], allJournalEntries[id]["type"], allJournalEntries[id]["hours"], allJournalEntries[id]["comment"])
+           $("#row_"+id).replaceWith(outstr);
+           $("input[name^='time_"+id+"']").timepicker({ 'timeFormat': 'H:i' });
+           $("input[name^='date_"+id+"']").datepicker({ dateFormat: 'mm/dd/yy' });
+           $("#comment_"+id).val(allJournalEntries[id]["comment"].replace( /\<br\>/g, '\n' ));
+        });
+
+        $(".remove_bin#deleteJournalRow").on('click', function() {
+           id = $(this).attr("row");
+           DeleteJournalRow(id);
+        });
 
         $(document).ready(function() {
            $("#addJournalRow").click(function () {
-                  var outstr = emptyJournalLine(rowcount, myGenerator['MonitorTime'], "", isNaN(parseFloat(myGenerator['RunHours'])) ? "" : parseFloat(myGenerator['RunHours']))
+                  id = $("#alljournal").length+1
+                  var outstr = emptyJournalLine("add", id, myGenerator['MonitorTime'], "", isNaN(parseFloat(myGenerator['RunHours'])) ? "" : parseFloat(myGenerator['RunHours']), "")
                   if ($("#alljournal").length > 0) {
                       $("#alljournal").append(outstr);
                   } else {
                       $("#alljournal").append(outstr);
                   }
-                  $("input[name^='time_"+rowcount+"']").timepicker({ 'timeFormat': 'H:i' });
-                  $("input[name^='date_"+rowcount+"']").datepicker({ dateFormat: 'mm/dd/yy' })
-                  rowcount++;
+                  $("input[name^='time_"+id+"']").timepicker({ 'timeFormat': 'H:i' });
+                  $("input[name^='date_"+id+"']").datepicker({ dateFormat: 'mm/dd/yy' })
            });
 
            $("#clearJournal").click(function () {
               ClearJournal();
+           });
+
+           $("#printJournal").click(function () {
+              printJournal(result);
            });
 
         });
@@ -1410,10 +1960,10 @@ function renderJournalLine(rowcount, date, type, hours, comment) {
    var outstr = '<tr id="row_' + rowcount + '"><td align="center">';
    outstr += '  <div class="card" style="width:80%;align:center;" name="journal_' + rowcount + '">';
    outstr += '     <div style="width:100%; background-color:#e1e1e1; border-radius: 6px 6px 0px 0px; float:left; padding-top:10px; padding-bottom:10px;">';
-   outstr += '         <table width="90%"><tr><td width="33%">Date: '+date+'</td><td width="33%">Type: '+type+'</td><td width="33%">Service Hours: '+hours+'</td></table>';
+   outstr += '         <table width="90%"><tr><td width="30%">Date: '+date+'</td><td width="30%">Type: '+type+'</td><td width="30%">Service Hours: '+hours+'</td><td width="10%" align="right"><img id="editJournalRow" row="'+ rowcount +'" class="edit" src="images/transparent.png" width="24px" height="24px">&nbsp<img id="deleteJournalRow" row="'+ rowcount +'" class="remove_bin" src="images/transparent.png" width="24px" height="24px"></td></table>';
    outstr += '     </div>';
    outstr += '     <div style="clear: both;"></div>';
-   outstr += '     <div style="margin:10px;font-size: 15px;">'+comment+'</center></div>';
+   outstr += '     <div style="margin:10px;font-size:15px;text-align:left;">'+comment+'</div>';
    outstr += '     <div style="clear: both;"></div><br>';
    outstr += '  </div>';
    outstr += '</td>';
@@ -1421,21 +1971,28 @@ function renderJournalLine(rowcount, date, type, hours, comment) {
    return outstr;
 }
 
-function emptyJournalLine(rowcount, date, type, hours, comment) {
+function emptyJournalLine(rowtype, rowcount, date, type, hours, comment) {
+   if (comment == undefined) {
+     comment = ""
+   }
    var outstr = '<tr id="row_' + rowcount + '"><td align="center">';
    outstr += '<form id="formNotifications">';
    outstr += '  <div class="card" style="width:80%;align:center;" name="journal_' + rowcount + '">';
    outstr += '     <div style="width:100%; background-color:#e1e1e1; border-radius: 6px 6px 0px 0px; float:left; padding-top:10px; padding-bottom:10px;">';
    outstr += '         <center><table width="80%">';
    outstr += '           <tr><td align="right" style="padding:3px">Date: &nbsp;&nbsp;&nbsp;</td><td style="padding:3px"><input id="date_' + rowcount + '" name="date_' + rowcount + '" type="text" value="'+date.split(" ")[0]+'">&nbsp;<input id="time_' + rowcount + '" name="time_' + rowcount + '" type="text" value="'+date.split(" ")[1]+'"></td></tr>';
-   outstr += '           <tr><td align="right" style="padding:3px">Type: &nbsp;&nbsp;&nbsp;</td><td style="padding:3px"><select id="type_' + rowcount + '" name="type_' + rowcount + '" ><option value="repair">Repair</option><option value="check">Check</option><option value="observation">Observation</option><option value="maintenance">Maintenance</option></select></td></tr>';
+   outstr += '           <tr><td align="right" style="padding:3px">Type: &nbsp;&nbsp;&nbsp;</td><td style="padding:3px"><select id="type_' + rowcount + '" name="type_' + rowcount + '" >';
+   outstr += '               <option value="Repair" ' + (type.toLowerCase() == "repair"  ? ' selected="selected" ' : '') + '>Repair</option>';
+   outstr += '               <option value="Check" ' + (type.toLowerCase() == "check"  ? ' selected="selected" ' : '') + '>Check</option>';
+   outstr += '               <option value="Observation" ' + (type.toLowerCase() == "observation"  ? ' selected="selected" ' : '') + '>Observation</option>';
+   outstr += '               <option value="Maintenance" ' + (type.toLowerCase() == "maintenance"  ? ' selected="selected" ' : '') + '>Maintenance</option></select></td></tr>';
    outstr += '           <tr><td align="right" style="padding:3px">Service Hours: &nbsp;&nbsp;&nbsp;</td><td style="padding:3px"><input id="hours_' + rowcount + '" name="hours_' + rowcount + '" type="text" value="'+hours+'"></td></tr>';
    outstr += '         </table></center>';
    outstr += '     </div>';
    outstr += '     <div style="clear: both;"></div>';
-   outstr += '     <div style="margin:15px;font-size: 15px;"><textarea id="comment_' + rowcount + '" name="comment_' + rowcount + '" rows="4" style="width:100%;"></textarea></center></div>';
+   outstr += '     <div style="margin:15px;font-size: 15px;"><textarea id="comment_' + rowcount + '" name="comment_' + rowcount + '" rows="4" style="width:100%;">'+comment.replace( /\<br\>/g, '\n' )+'</textarea></center></div>';
    outstr += '     <div style="clear: both;"></div>';
-   outstr += '     <button id="setjournalbutton" onClick="saveJournals(' + rowcount + '); return false;">Save</button>';
+   outstr += '     <button id="setjournalbutton" onClick="saveJournals(\'' + rowtype + '\', ' + rowcount + '); return false;">Save</button>';
    outstr += '     <div style="clear: both;"></div><br>';
    outstr += '  </div>';
    outstr += '</form>';
@@ -1449,7 +2006,7 @@ function emptyJournalLine(rowcount, date, type, hours, comment) {
 //*****************************************************************************
 // called when Save Journals is clicked
 //*****************************************************************************
-function saveJournals(rowcount){
+function saveJournals(rowtype, rowcount){
 
     var DisplayStr = "Save journal? Are you sure?";
     var DisplayStrAnswer = false;
@@ -1491,41 +2048,56 @@ function saveJournals(rowcount){
              var DisplayStr1 = "Saving Journal..."
              DisplayStrAnswer = false; // Prevent recursive calls.
              e.preventDefault();
-             saveJournalsJSON(rowcount);
+             saveJournalsJSON(rowtype, rowcount);
              var DisplayStr2 = '<div class="progress-bar"><span class="progress-bar-fill" style="width: 0%"></span></div>';
              $('.vex-dialog-message').html(DisplayStr1);
              $('.vex-dialog-buttons').html(DisplayStr2);
              $('.progress-bar-fill').queue(function () {
                   $(this).css('width', '100%')
              });
-             setTimeout(function(){ vex.closeAll();}, 2000);
+             setTimeout(function(){ 
+              vex.closeAll();
+              gotoRoot();
+            }, 2000); 
            }
         }
     })
 }
 
 //*****************************************************************************
-function saveJournalsJSON(rowcount){
+function saveJournalsJSON(rowtype, rowcount){
     try {
         var fields = {};
 
         var entry = {
             date: $("input[name^='date_"+rowcount+"']").val()+" "+$("input[name^='time_"+rowcount+"']").val(),   // Format is text string:  MM/DD/YYYY
             type: $("select[name^='type_"+rowcount+"']").val(),                                                  // Values are string: "Repair", "Maintenance", "Check" or "Observation"
-            hours: parseFloat($("input[name^='hours_"+rowcount+"']").val()),                                       // Must be a number (integer or floating point)
-            comment: $("textarea[name^='comment_"+rowcount+"']").val()                                           // Text string
+            hours: parseFloat($("input[name^='hours_"+rowcount+"']").val()),                                     // Must be a number (integer or floating point)
+            comment: $("textarea[name^='comment_"+rowcount+"']").val().replace( /\n/g, '<br>' )               // Text string
             };
 
         // send command
-        var url = baseurl.concat("add_maint_log");
-        var input =  JSON.stringify(entry)
-        $.getJSON(  url,
-              {add_maint_log: input},
-              function(result){
-                 outstr = renderJournalLine(rowcount, entry["date"], entry["type"], entry["hours"], entry["comment"]);
-                 $("#row_"+rowcount).replaceWith(outstr);
-        });
-
+        if (rowtype == "add") {
+           var url = baseurl.concat("add_maint_log");
+           var input =  JSON.stringify(entry)
+           $.getJSON(  url,
+                 {add_maint_log: input},
+                 function(result){
+                    outstr = renderJournalLine(rowcount, entry["date"], entry["type"], entry["hours"], entry["comment"]);
+                    $("#row_"+rowcount).replaceWith(outstr);
+           });
+        } else if (rowtype == "amend") {
+           var url = baseurl.concat("edit_row_maint_log");
+           var input =  JSON.stringify(entry)
+           $.getJSON(  url,
+                 {edit_row_maint_log: "{\""+rowcount+"\": "+input+"}"},
+                 function(result){
+                    // The following 2 lines don't update the ".on('click'"... Probably a jquery issue.
+                    // outstr = renderJournalLine(rowcount, entry["date"], entry["type"], entry["hours"], entry["comment"]);
+                    // $("#row_"+rowcount).replaceWith(outstr);
+                    DisplayJournal();
+           });
+        }
 
     } catch(err) {
         GenmonAlert("Error: invalid selection");
@@ -1597,6 +2169,65 @@ function ClearJournal(){
     });
 }
 
+function DeleteJournalRow(id){
+
+    vex.dialog.confirm({
+        unsafeMessage: 'Delete the Journal Entry '+id+'? This action cannot be undone.<br>',
+        overlayClosesOnClick: false,
+        callback: function (value) {
+             if (value == false) {
+                return;
+             } else {
+                var url = baseurl.concat("delete_row_maint_log");
+                // var input =  JSON.stringify({id: id})
+                $.getJSON(  url,
+                   {delete_row_maint_log: id},
+                   function(result){
+                     // $("#row_"+id).empty();
+                     DisplayJournal();
+                   });
+             }
+        }
+    });
+}
+
+//*****************************************************************************
+function printJournal (data) {
+    var pageHeight = 20;
+    var rowHeight = 15;
+    var dataDivider;
+
+    dataDivider = 12;
+
+    $('<div id="printJournalFrame" style="width:1000px"></div>').appendTo("#mydisplay");
+
+    var now = new moment();
+    var outstr = '<br><center><h1>Generator Journal for '+myGenerator["sitename"]+'</h1><br>';
+    outstr += '<h2>As of: '+now.format("D MMMM YYYY H:mm:ss")+'</h2><br>';
+    outstr += '<table width="1000px" border="0"><tr><td class="printRegisterTDtitle" nowrap>Type / Date / Service Hours</td><td class="printRegisterTDtitle">Comment</td></tr>';
+
+    $.each(Object.keys(data), function(i, key) {
+
+        pageHeight += rowHeight;
+        if (pageHeight < 100) {
+             outstr += '';
+        } else {
+             outstr += '</table><div class="pagebreak"> </div><table width="1000px" border="0"><tr><td class="printRegisterTDtitle" nowrap>Type / Date / Service Hours</td><td class="printRegisterTDtitle">Comment</td></tr>';
+             pageHeight = 0;
+        }
+        rowHeight = Math.round(data[i]["comment"].length / 160)*15;
+
+        var reg_val = data[key][0];
+
+        outstr += '<tr><td width="40%" class="printRegisterTD" nowrap>' +  data[i]["type"] + '<br>on:' + data[i]["date"] + '<br>at: ' + data[i]["hours"] + ' hrs</td>';
+        outstr += '<td width="60%" class="printRegisterTD"><br>' +  data[i]["comment"] + '</td></tr>';
+    });
+    outstr += '</table></center>';
+    $("#printJournalFrame").html(outstr);
+
+    $("#printJournalFrame").printThis({canvas: true, importCSS: false, loadCSS: "css/print.css", pageTitle:"Genmon Journal", removeScripts: true});
+    setTimeout(function(){ $("#printJournalFrame").remove(); }, 1000);
+}
 
 //*****************************************************************************
 // test email
@@ -1642,7 +2273,7 @@ function TestEmailSettings(smtp_server, smtp_port,email_account,sender_account,s
                        $('.vex-dialog-buttons').show();
                     } else {
                        vex.dialog.buttons.YES.text = 'Close';
-                       GenmonAlert("An error occured: <br>"+result+"<br><br>Please try again.");
+                       GenmonAlert("An error occurred: <br>"+result+"<br><br>Please try again.");
                        $('.vex-dialog-button-primary').text("Close");
                     }
       });
@@ -1719,6 +2350,8 @@ function DisplaySettings(){
               outstr += '<tr><td width="25px">&nbsp;</td><td width="300px">' + result[key][1] + '</td><td>' + printSettingsField(result[key][0], key, result[key][3], result[key][4], result[key][5], "toggleSection(true, 'useselfsignedcert');") + '</td></tr>';
             } else if (key == "serial_tcp_port") {
               outstr += '<tr><td width="25px">&nbsp;</td><td width="300px">' + result[key][1] + '</td><td>' + printSettingsField(result[key][0], key, result[key][3], result[key][4], result[key][5], "toggleSection(true, 'useselfsignedcert');") + '</td></tr>';
+            } else if (key == "modbus_tcp") {
+              outstr += '<tr><td width="25px">&nbsp;</td><td width="300px">' + result[key][1] + '</td><td>' + printSettingsField(result[key][0], key, result[key][3], result[key][4], result[key][5], "toggleSection(true, 'useselfsignedcert');") + '</td></tr>';
               outstr += '</table></fieldset><table id="allsettings" border="0">';
             } else if (key == "favicon") {
               outstr += '</table></fieldset><table id="allsettings" border="0">';
@@ -1727,10 +2360,16 @@ function DisplaySettings(){
               outstr += '<tr><td width="25px">&nbsp;</td><td bgcolor="#ffcccc" width="300px">' + result[key][1] + '</td><td bgcolor="#ffcccc">' + printSettingsField(result[key][0], key, result[key][3], result[key][4], result[key][5]) + '</td></tr>';
             } else if (key == "weatherlocation") {
               outstr += '<tr><td width="25px">&nbsp;</td><td valign="top" width="300px">' + result[key][1] + '</td><td>' + printSettingsField(result[key][0], key, result[key][3], result[key][4], result[key][5]);
-              if (usehttps == true) {
+              if (httpsUsed() == true) {
                 outstr += '<br><button type="button" id="weathercityname" onclick="lookupLocation()">Look Up</button>';
               }
               outstr += '</td></tr>';
+            } else if (key == "usemfa") {
+              outstr += '<tr><td width="25px">&nbsp;</td><td width="300px">' + result[key][1] + '</td><td>' + printSettingsField(result[key][0], key, result[key][3], result[key][4], result[key][5], "toggleSectionInverse(true, 'usemfa');") + '</td></tr>';
+              outstr += '</table></fieldset><fieldset id="'+key+'Section"><table id="allsettings" border="0">';
+            } else if (key == "mfa_url") {
+              outstr += '<tr><td width="25px">&nbsp;</td><td width="300px">' + result[key][1] + '</td><td><div id="qrcode"></div></td></tr>'
+              QR_Code_URL = result[key][3];
             } else {
               outstr += '<tr><td width="25px">&nbsp;</td><td width="300px">' + result[key][1] + '</td><td>' + printSettingsField(result[key][0], key, result[key][3], result[key][4], result[key][5]) + '</td></tr>';
             }
@@ -1740,22 +2379,26 @@ function DisplaySettings(){
 
         $("#mydisplay").html(outstr);
         $('input').lc_switch();
+        if (QR_Code_URL != "") {
+          $("#qrcode").qrcode({width: 164,height: 164,text: QR_Code_URL});
+        }
         $.extend($.idealforms.rules, {
            // The rule is added as "ruleFunction:arg1:arg2"
            HTTPAddress: function(input, value, arg1, arg2) {
-             var regex = RegExp("^http[s]?:\\/\\/(([a-z0-9]+([\-\\.]{1}[a-z0-9]+)*\\.[a-z]{2,5}(\/.*)?)|(localhost(\/.*)?))$", 'g');
+             //var regex = RegExp("^http[s]?:\\/\\/(([a-z0-9]+([-\\.]{1}[a-z0-9]+)*\\.[a-z]{2,5}(\/.*)?)|(localhost(\/.*)?))$", 'g');
+             var regex = RegExp("^(?:https?:\/\/)(?!$)(?:www\.)?[a-zA-Z]*(?:\.[a-zA-Z]{2,6})?(?:(?:\d{1,3}\.){3}\d{1,3})?", 'g');
              return regex.test(value);
            },
            InternetAddress: function(input, value, arg1, arg2) {
-             var regex = RegExp("^((([a-z0-9]+([\-\\.]{1}[a-z0-9]+)*\\.[a-z]{2,5}(\/.*)?)|(localhost(\/.*)?))|((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\/.*)?))$", 'g');
+             var regex = RegExp("^((([a-z0-9]+([-\\.]{1}[a-z0-9]+)*\\.[a-z]{2,5}(\/.*)?)|(localhost(\/.*)?))|((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?).(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?).(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?).(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\/.*)?))$", 'g');
              return regex.test(value);
            },
            IPAddress: function(input, value, arg1, arg2) {
-             var regex = RegExp("^(((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\/.*)?)|(localhost(\/.*)?))$", 'g');
+             var regex = RegExp("^(((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?).(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?).(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?).(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\/.*)?)|(localhost(\/.*)?))$", 'g');
              return regex.test(value);
            },
            InternationalPhone: function(input, value, arg1, arg2) {
-             var regex = RegExp('^(\\+(\\d{1,3}))?((\\(\\d{1,4}\\))|(\\d{1,3}))?(\\s|\-)?(\\d+(\\s?|\-?))+$', 'g');
+             var regex = RegExp('^[0-9\-().+\s]{10,20}$', 'g');
              return regex.test(value);
            },
            UnixFile: function(input, value, arg1, arg2) {
@@ -1789,6 +2432,7 @@ function DisplaySettings(){
         useSerialTCPChange(false);
         useFullTank(false);
         toggleSection(false, "useselfsignedcert");
+        toggleSectionInverse(false, "usemfa");
         toggleSectionInverse(false, "disablesmtp");
         toggleSectionInverse(false, "disableimap");
         toggleSectionInverse(false, "disableweather");
@@ -1809,6 +2453,9 @@ function usehttpsChange(animation) {
    if ($("#usehttps").is(":checked")) {
       $("#noneSecuritySettings").hide((animation ? 300 : 0));
       $("#usehttpsSection").show((animation ? 300 : 0));
+      if ($("#usemfa").is(":checked")) {
+        $("#usemfaSection").show((animation ? 300 : 0));
+      }
 
       if (!$("#useselfsignedcert").is(":checked")) {
          $("#useselfsignedcertSettings").show((animation ? 300 : 0));
@@ -1816,6 +2463,7 @@ function usehttpsChange(animation) {
    } else {
       $("#usehttpsSection").hide((animation ? 300 : 0));
       $("#noneSecuritySettings").show((animation ? 300 : 0));
+      $("#usemfaSection").hide((animation ? 300 : 0));
    }
    if (($('#http_port').val() == $('#http_port').attr('oldValue')) && ($("#usehttps").attr('oldValue') == ($("#usehttps").prop('checked') === true ? "true" : "false"))){
       $("#newURLnotify").hide((animation ? 300 : 0));
@@ -1854,7 +2502,7 @@ function toggleSectionInverse(animation, section) {
 //*****************************************************************************
 function lookupLocation() {
     if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(locationSuccess, locationError);
+        navigator.geolocation.getCurrentPosition(locationSuccess, locationError, {timeout:10000});
     } else {
         GenmonAlert("Your browser does not support Geolocation!");
     }
@@ -1880,6 +2528,11 @@ function locationError(error) {
 //*****************************************************************************
 function locationSuccess(position) {
     try {
+            if ($('#weatherkey').val().length < 1 ) {
+              GenmonAlert("API key is required for city lookup.");
+              return;
+            }
+
             var weatherAPI = '//api.openweathermap.org/data/2.5/forecast?lat=' + position.coords.latitude + '&lon=' + position.coords.longitude + '&lang=en&APPID='+$('#weatherkey').val();
             $.getJSON(weatherAPI, function (response) {
                 $('#weatherlocation').val(response.city.id);
@@ -1893,36 +2546,36 @@ function locationSuccess(position) {
 }
 
 //*****************************************************************************
-function printSettingsField(type, key, value, tooltip, validation, callback) {
+function printSettingsField(type, key, value, tooltip, validation, callback, parent = "", name = "") {
    var outstr = "";
    switch (type) {
      case "string":
      case "password":
        outstr += '<div class="field idealforms-field">' +
-                 '<input id="' + key + '" style="width: 300px;" name="' + key + '" type="' + ((type == "password") ? "password" : "text") + '" ' +
+                 '<input id="' + key + parent + '" style="width: 300px;" name="' + key + '" type="' + ((type == "password") ? "password" : "text") + '" ' +
                   (((typeof callback !== 'undefined' ) && (callback != "")) ? ' onChange="' + callback + ';" ' : "") +
                   (typeof value === 'undefined' ? '' : 'value="' + replaceAll(value, '"', '&quot;') + '" ') +
                   (typeof value === 'undefined' ? '' : 'oldValue="' + replaceAll(value, '"', '&quot;') + '" ') +
-                  (((typeof validation === 'undefined') || (validation==0)) ? 'onFocus="$(\'#'+key+'_tooltip\').show();" onBlur="$(\'#'+key+'_tooltip\').hide();" ' : 'data-idealforms-rules="' + validation + '" ') + '>' +
+                  (((typeof validation === 'undefined') || (validation==0)) ? 'onFocus="$(\'#'+key+parent+'_tooltip\').show();" onBlur="$(\'#'+key+parent+'_tooltip\').hide();" ' : 'data-idealforms-rules="' + validation + '" ') + '>' +
                  '<span class="error" style="display: none;"></span>' +
-                  (((typeof tooltip !== 'undefined' ) && (tooltip.trim() != "")) ? '<span id="' + key + '_tooltip" class="tooltip" style="display: none;">' + replaceAll(tooltip, '"', '&quot;') + '</span>' : "") +
+                  (((typeof tooltip !== 'undefined' ) && (tooltip.trim() != "")) ? '<span id="' + key + parent + '_tooltip" class="tooltip" style="display: none;">' + replaceAll(tooltip, '"', '&quot;') + '</span>' : "") +
                  '</div>';
        break;
      case "float":
      case "int":
        outstr += '<div class="field idealforms-field">' +
-                 '<input id="' + key + '" style="width: 150px;" name="' + key + '" type="text" ' +
+                 '<input id="' + key + parent +  '" style="width: 150px;" name="' + key + '" type="text" ' +
                   (((typeof callback !== 'undefined' ) && (callback != "")) ? ' onChange="' + callback + ';" ' : "") +
                   (typeof value === 'undefined' ? '' : 'value="' + value.toString() + '" ') +
                   (typeof value === 'undefined' ? '' : 'oldValue="' + value.toString() + '" ') +
-                  (((typeof validation === 'undefined') || (validation==0)) ? 'onFocus="$(\'#'+key+'_tooltip\').show();" onBlur="$(\'#'+key+'_tooltip\').hide();" ' : 'data-idealforms-rules="' + validation + '" ') + '>' +
+                  (((typeof validation === 'undefined') || (validation==0)) ? 'onFocus="$(\'#'+key+parent+'_tooltip\').show();" onBlur="$(\'#'+key+parent+'_tooltip\').hide();" ' : 'data-idealforms-rules="' + validation + '" ') + '>' +
                  '<span class="error" style="display: none;"></span>' +
-                  (((typeof tooltip !== 'undefined' ) && (tooltip.trim() != "")) ? '<span id="' + key + '_tooltip" class="tooltip" style="display: none;">' + replaceAll(tooltip, '"', '&quot;') + '</span>' : "") +
+                  (((typeof tooltip !== 'undefined' ) && (tooltip.trim() != "")) ? '<span id="' + key + parent + '_tooltip" class="tooltip" style="display: none;">' + replaceAll(tooltip, '"', '&quot;') + '</span>' : "") +
                  '</div>';
        break;
      case "boolean":
        outstr += '<div class="field idealforms-field" onmouseover="showIdealformTooltip($(this))" onmouseout="hideIdealformTooltip($(this))">' +
-                 '<input id="' + key + '" name="' + key + '" type="checkbox" ' +
+                 '<input id="' + key + parent +  '" name="' + key + '" type="checkbox" ' +
                   (((typeof callback !== 'undefined' ) && (callback != "")) ? ' data-callback="' + callback + ';" ' : "") +
                   (((typeof value !== 'undefined' ) && (value.toString() == "true")) ? ' checked ' : '') +
                   (((typeof value !== 'undefined' ) && (value.toString() == "true")) ? ' oldValue="true" ' : ' oldValue="false" ') + '>' +
@@ -1931,7 +2584,7 @@ function printSettingsField(type, key, value, tooltip, validation, callback) {
        break;
      case "list":
        outstr += '<div class="field idealforms-field" onmouseover="showIdealformTooltip($(this))" onmouseout="hideIdealformTooltip($(this))">' +
-                 '<select id="' + key + '" style="width: 300px;" name="' + key + '" ' +
+                 '<select id="' + key + parent +  '" style="width: 300px;" name="' + key + '" ' +
                   (((typeof callback !== 'undefined' ) && (callback != "")) ? ' onChange="' + callback + ';" ' : "") +
                   (typeof value === 'undefined' ? '' : 'value="' + replaceAll(value, '"', '&quot;') + '" ') +
                   (typeof value === 'undefined' ? '' : 'oldValue="' + replaceAll(value, '"', '&quot;') + '" ') + '>' +
@@ -2014,6 +2667,7 @@ function saveSettings(){
                 if ($('#fueltype').val() != $('#fueltype').attr('oldValue')) { myGenerator["fueltype"] = $('#fueltype').val(); }
                 if ($('#favicon').val() != $('#favicon').attr('oldValue')) { changeFavicon($('#favicon').val()); }
                 if (($('#enhancedexercise').prop('checked')  === true ? "true" : "false") != $('#enhancedexercise').attr('oldValue')) { myGenerator['EnhancedExerciseEnabled'] = ($('#enhancedexercise').prop('checked')  === true ? "true" : "false") }
+                gotoLogin();
              }, 10000);
            }
         }
@@ -2096,7 +2750,7 @@ function DisplayAddons(){
                $.each(Object.keys(result[addon]["parameters"]), function(j, param) {
                    var par = result[addon]["parameters"][param];
                    outstr += par["display_name"] + '<br>';
-                   outstr += printSettingsField(par["type"], param, par["value"], par["description"], par["bounds"], "changedCard(true, '"+addon+"')") + '<div style="clear: both;"></div>';
+                   outstr += printSettingsField(par["type"], param, par["value"], par["description"], par["bounds"], "changedCard(true, '"+addon+"')", parent = addon, name = par["display_name"]) + '<div style="clear: both;"></div>';
                });
             }
             outstr += '      </div>';
@@ -2115,19 +2769,20 @@ function DisplayAddons(){
         $.extend($.idealforms.rules, {
            // The rule is added as "ruleFunction:arg1:arg2"
            HTTPAddress: function(input, value, arg1, arg2) {
-             var regex = RegExp("^http[s]?:\\/\\/(([a-z0-9]+([\-\\.]{1}[a-z0-9]+)*\\.[a-z]{2,5}(\/.*)?)|(localhost(\/.*)?))$", 'g');
+             //var regex = RegExp("^http[s]?:\\/\\/(([a-z0-9]+([-\\.]{1}[a-z0-9]+)*\\.[a-z]{2,5}(\/.*)?)|(localhost(\/.*)?))$", 'g');
+             var regex = RegExp("^(?:https?:\/\/)(?!$)(?:www\.)?[a-zA-Z]*(?:\.[a-zA-Z]{2,6})?(?:(?:\d{1,3}\.){3}\d{1,3})?", 'g');
              return regex.test(value);
            },
            InternetAddress: function(input, value, arg1, arg2) {
-             var regex = RegExp("^(([a-z0-9]+([\-\\.]{1}[a-z0-9]+)*\\.[a-z]{2,5}(\/.*)?)|(localhost(\/.*)?))$", 'g');
+             var regex = RegExp("^(([a-z0-9]+([-\\.]{1}[a-z0-9]+)*\\.[a-z]{2,5}(\/.*)?)|(localhost(\/.*)?))$", 'g');
              return regex.test(value);
            },
            IPAddress: function(input, value, arg1, arg2) {
-             var regex = RegExp("^(((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\/.*)?)|(localhost(\/.*)?))$", 'g');
+             var regex = RegExp("^(((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?).(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?).(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?).(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\/.*)?)|(localhost(\/.*)?))$", 'g');
              return regex.test(value);
            },
            InternationalPhone: function(input, value, arg1, arg2) {
-             var regex = RegExp('^(\\+(\\d{1,3}))?((\\(\\d{1,4}\\))|(\\d{1,3}))?(\\s|\-)?(\\d+(\\s?|\-?))+$', 'g');
+             var regex = RegExp('^[0-9\-().+\s]{10,20}$', 'g');
              return regex.test(value);
            },
            UnixFile: function(input, value, arg1, arg2) {
@@ -2257,10 +2912,32 @@ function saveAddon(addon, addonTitle){
              });
              setTimeout(function(){
                 vex.closeAll();
+                gotoLogin();
              }, 10000);
+
            }
         }
     })
+}
+
+//*****************************************************************************
+function httpsUsed() {
+
+    var url = window.location.href;
+    return url.includes("https:")
+}
+
+//*****************************************************************************
+function gotoRoot() {
+
+  var url = window.location.href.split("/")[0].split("?")[0];
+  window.location.href = url;
+}
+//*****************************************************************************
+function gotoLogin() {
+
+    var url = window.location.href.split("/")[0].split("?")[0];
+    window.location.href = url.concat("/logout");
 }
 //*****************************************************************************
 function saveAddonJSON(addon) {
@@ -2307,8 +2984,10 @@ function saveAddonJSON(addon) {
 //*****************************************************************************
 
 function DisplayAbout(){
-    var outstr = '<br><br><br><center><img src="images/GenmonLogo.png" width="60%"><br>';
-    outstr += '<div class="aboutInfo"><br>Genmon<br>Version '+myGenerator["version"]+'<br><br><br>Developed by <a target="_blank" href="https://github.com/jgyates/">@jgyates</a>.<br><br>Published under the <a target="_blank" href="https://raw.githubusercontent.com/jgyates/genmon/master/LICENSE">GNU General Public License v2.0</a>.<br><br>Source: <a target="_blank" href="https://github.com/jgyates/genmon">Github</a><br><br>Built using Python & Javascript.<br>&nbsp;<br></center></div>';
+    vpw = $(window).width();
+ 
+    var outstr = '<br><br><br><center><img src="images/GenmonLogo.png" width="'+Math.round((vpw-200)*0.6)+'px" height="'+Math.round(((vpw-200)*0.6)*(242/1066))+'px"><br>';
+    outstr += '<div class="aboutInfo"><br>Genmon<br>Version <span id="about_version">'+myGenerator["version"]+'</span><br><br><br>Developed by <a target="_blank" href="https://github.com/jgyates/">@jgyates</a>.<br><br>Published under the <a target="_blank" href="https://raw.githubusercontent.com/jgyates/genmon/master/LICENSE">GNU General Public License v2.0</a>.<br><br>Source: <a target="_blank" href="https://github.com/jgyates/genmon">Github</a><br><br>Built using Python & Javascript.<br>&nbsp;<br></center></div>';
 
     if (myGenerator["write_access"] == true) {
       // Update software
@@ -2316,27 +2995,39 @@ function DisplayAbout(){
       outstr += '&nbsp;&nbsp;<button id="checkNewVersion" onClick="checkNewVersion();">Upgrade to latest version</button><br>';
       outstr += '&nbsp;&nbsp;<a href="javascript:showChangeLog();" style="font-style:normal; font-size:14px; text-decoration:underline;">Change Log</a>';
       // Submit registers and logs
-      outstr += '<br><br>Submit Information to Developers:<br><br>';
+      outstr += '<br>Submit Information to Developers:<br>';
+      outstr += 'NOTE: outbound email must be setup and working to submit logs or registers<br><br>';
       outstr += '&nbsp;&nbsp;<button id="submitRegisters" onClick="submitRegisters();">Submit Registers</button>';
       outstr += '&nbsp;&nbsp;<button id="submitLogs" onClick="submitLogs();">Submit Logs</button>';
-      //Backup
+      //Get Backup
       outstr += '<br><br>Download Backup Files:<br><br>';
-      outstr += '&nbsp;&nbsp;<button id="backupFiles" onClick="backupFiles();">Backup</button></center>';
+      // TODO
+      //outstr += '<br><br>Download Backup Files or Restore Backup:<br><br>';
+      
+      outstr += '&nbsp;&nbsp;<button id="backupFiles" onClick="backupFiles();">Backup</button>';
+      // TODO
+      //outstr += '&nbsp;&nbsp;<button id="restoreFiles" onClick="restoreFiles();">Restore</button>';
+      //Get Log Files
+      outstr += '<br><br>Download Log Files:<br><br>';
+      outstr += '&nbsp;&nbsp;<button id="logFiles" onClick="logFiles();">Log Files</button></center>';
     }
-
+   
     $("#mydisplay").html(outstr);
 
     if (myGenerator["write_access"] == true) {
        if (latestVersion == "") {
          // var url = "https://api.github.com/repos/jgyates/genmon/releases";
-         var url = "https://raw.githubusercontent.com/jgyates/genmon/master/genmon.py";
+         var url = "https://raw.githubusercontent.com/jgyates/genmon/master/genmonlib/program_defaults.py";
          $.ajax({dataType: "html", url: url, timeout: 4000, error: function(result) {
                console.log("got an error when looking up latest version");
                latestVersion = "unknown";
          }, success: function(result) {
-               latestVersion = replaceAll((jQuery.grep(result.split("\n"), function( a ) { return (a.indexOf("GENMON_VERSION") >= 0); }))[0].split(" ")[2], '"', '');
+               latestVersion = replaceAll((jQuery.grep(result.split("\n"), function( a ) { return (a.indexOf("GENMON_VERSION") >= 0); }))[0].split("=")[1], '"', '');
+               latestVersion = latestVersion.trim()
                if (latestVersion != myGenerator["version"]) {
                      $('#updateNeeded').hide().html("<br>&nbsp;&nbsp;&nbsp;&nbsp;You are not running the latest version.<br>&nbsp;&nbsp;&nbsp;&nbsp;Current Version: " + myGenerator["version"] +"<br>&nbsp;&nbsp;&nbsp;&nbsp;New Version: " + latestVersion+"<br><br>").fadeIn(1000);
+               } else {
+                     $('#updateNeeded').html("").fadeIn(1000);
                }
          }});
        } else if ((latestVersion != "unknown") && (latestVersion != myGenerator["version"])) {
@@ -2462,11 +3153,24 @@ function updateSoftware(){
                   $(this).css('width', '100%')
              });
              // location.reload();
-             setTimeout(function(){ vex.closeAll(); window.location.href = window.location.pathname+"?page=about"; }, 10000);
+             setTimeout(function(){ vex.closeAll(); window.location.href = window.location.pathname+"?page=about&reload=true"; }, 10000);
        }
 
 
     });
+}
+
+//*****************************************************************************
+function restoreFiles(){
+    // TODO
+    let input = document.createElement('input');
+    input.type = 'file';
+    input.onchange = _ => {
+      // you can use this method to get file and perform respective operations
+      let files =   Array.from(input.files);
+      console.log(files);
+    };
+    input.click();
 }
 //*****************************************************************************
 function backupFiles(){
@@ -2474,6 +3178,24 @@ function backupFiles(){
     var link=document.createElement("a");
     link.id = 'backupLink'; //give it an ID
     link.href=baseurl.concat("backup");
+
+    //use the following instead of link.click() so it will work on more browsers
+    var clickEvent = new MouseEvent("click", {
+      "view": window,
+      "bubbles": true,
+      "cancelable": false
+    });
+    link.dispatchEvent(clickEvent);
+
+
+}
+
+//*****************************************************************************
+function logFiles(){
+
+    var link=document.createElement("a");
+    link.id = 'logLink'; //give it an ID
+    link.href=baseurl.concat("get_logs");
 
     //use the following instead of link.click() so it will work on more browsers
     var clickEvent = new MouseEvent("click", {
@@ -2521,6 +3243,39 @@ function submitLogs(){
     });
 }
 
+//*****************************************************************************
+function sendServerCommand(cmd){
+
+    var msg = "";
+
+    switch (cmd) {
+       case "restart":
+          msg = 'Restart Genmon Software?<br><span class="confirmSmall">Are you sure you want to restart your Genmon software?</span>';
+          break;
+       case "reboot":
+          msg = 'Reboot System?<br><span class="confirmSmall">Are you sure you want to reboot your Genmon host?</span>';
+          break;
+       case "shutdown":
+          msg = 'Shutdown System?<br><span class="confirmSmall">Are you sure you want to shutdown your genmon host? NOTE: THIS CANNOT BE UNDONE VIA THE GUI OR COMMAND LINE AND YOU MAY HAVE TO ACCESS YOUR GENERATOR TO PHYSICALLY RESTART THE HOST AGAIN.</span>';
+          break;
+    }
+
+    vex.dialog.confirm({
+        unsafeMessage: msg,
+        overlayClosesOnClick: false,
+        callback: function (value) {
+             if (value == false) {
+                return;
+             } else {
+                var url = baseurl.concat(cmd);
+                $.getJSON(  url,
+                   {},
+                   function(result){});
+             }
+        }
+    });
+}
+
 
 //*****************************************************************************
 // DisplayRegisters - Shows the raw register data.
@@ -2531,29 +3286,40 @@ function DisplayRegistersFull()
     var outstr = 'Live Register View:<br><br>';
     outstr += '<center><table width="80%" border="0"><tr>';
 
-    $.each(Object.keys(regHistory["updateTime"]).sort(), function(i, reg_key) {
-        if ((i % 4) == 0){
-        outstr += '</tr><tr>';
-        }
-
-        var reg_val = regHistory["_10m"][reg_key][0];
-
-        outstr += '<td width="25%" class="registerTD">';
-        outstr +=     '<table width="100%" heigth="100%" id="val_'+reg_key+'">';
-        outstr +=     '<tr><td align="center" class="registerTDtitle">' + BaseRegistersDescription[reg_key] + '</td></tr>';
-        outstr +=     '<tr><td align="center" class="registerTDsubtitle">(' + reg_key + ')</td></tr>';
-        outstr +=     '<tr><td align="center" class="tooltip registerChart" id="content_'+reg_key+'">';
-        outstr +=        ((reg_key == "01f4") ? '<span class="registerTDvalMedium">HEX:<br>' + reg_val + '</span>' : 'HEX: '+reg_val) + '<br>';
-        outstr +=        ((reg_key == "01f4") ? '' : '<span class="registerTDvalSmall">DEC: ' + parseInt(reg_val, 16) + ' | HI:LO: '+parseInt(reg_val.substring(0,2), 16)+':'+parseInt(reg_val.substring(2,4), 16)+'</span>');
-        outstr +=     '</td></tr>';
-        outstr +=     '</table>';
-        outstr += '</td>';
-    });
-    if ((regHistory["_10m"].length % 4) > 0) {
-      for (var i = (regHistory["_10m"].length % 4); i < 4; i++) {
-         outstr += '<td width="25%" class="registerTD"></td>';
+    var RegTypes = ['Holding', 'Inputs', 'Coils'];
+    $.each(RegTypes, function(i, reg_type){
+      if (!(regHistory["_10m"].hasOwnProperty(reg_type))){
+        // no data for this register
+        return;
       }
-    }
+      $.each(Object.keys(regHistory["updateTime"][reg_type]).sort(), function(i, reg_key) {
+          if ((i % 4) == 0){
+          outstr += '</tr><tr>';
+          }
+
+          var reg_val = regHistory["_10m"][reg_type][reg_key][0];
+
+          outstr += '<td width="25%" class="registerTD">';
+          outstr +=     '<table width="100%" heigth="100%" id="val_'+reg_type+'_'+reg_key+'">';
+          outstr +=     '<tr><td align="center" class="registerTDtitle">' + BaseRegistersDescription[reg_type][reg_key] + '</td></tr>';
+          outstr +=     '<tr><td align="center" class="registerTDsubtitle">(' + reg_type+':'+reg_key + ')</td></tr>';
+          outstr +=     '<tr><td align="center" class="tooltip registerChart" id="content_'+reg_type+'_'+reg_key+'">';
+          outstr +=        ((reg_key == "01f4") ? '<span class="registerTDvalMedium">HEX:<br>' + reg_val + '</span>' : 'HEX: '+reg_val) + '<br>';
+          // This handles the case for byte data returning Not a Number (NaN) for coil registers
+          var strHi = ((parseInt(reg_val) & 0xff00) >> 8).toString()
+          var strLo = (parseInt(reg_val) & 0x00ff).toString()
+          outstr +=        ((reg_key == "01f4") ? '' : '<span class="registerTDvalSmall">DEC: ' + parseInt(reg_val, 16) + ' | HI:LO: '+strHi +':'+ strLo +'</span>');
+          outstr +=     '</td></tr>';
+          outstr +=     '</table>';
+          outstr += '</td>';
+      });
+    
+      if ((regHistory["_10m"][reg_type].length % 4) > 0) {
+        for (var i = (regHistory["_10m"][reg_type].length % 4); i < 4; i++) {
+          outstr += '<td width="25%" class="registerTD"></td>';
+        }
+      }
+    });
     outstr += '</tr></table>';
     outstr += '<br><img id="print10" class="print10 printButton" onClick="printRegisters(10)" src="images/transparent.png" width="36px" height="36px">&nbsp;&nbsp;&nbsp;';
     outstr += '<img id="print60" class="print60 printButton" onClick="printRegisters(60)" src="images/transparent.png" width="36px" height="36px">&nbsp;&nbsp;&nbsp;';
@@ -2577,6 +3343,8 @@ function DisplayRegistersFull()
         side: ['top', 'left'],
         functionReady: function(instance, helper) {
             var regId = $(helper.origin).attr('id').replace(/content_/g, '');
+            var reg_type = regId.split('_')[0]
+            var reg_key = regId.split('_')[1]
             instance.content('<div class="regHistoryCanvas"><table><tr><td class="regHistoryCanvasTop">' +
                              '  <div id="'+regId+'_graph1" class="regHistoryPlot"></div>' +
                              '  <div id="'+regId+'_graph2" class="regHistoryPlot"></div>' +
@@ -2590,12 +3358,12 @@ function DisplayRegistersFull()
             var plot_data2 = [];
             var plot_data3 = [];
             for (var i = 120; i >= 0; --i) {
-               if (regHistory["_10m"][regId].length > i)
-                   plot_data1.push([-i/12, parseInt(regHistory["_10m"][regId][i], 16)]);
-               if (regHistory["_60m"][regId].length > i)
-                   plot_data2.push([-i/2, parseInt(regHistory["_60m"][regId][i], 16)]);
-               if (regHistory["_24h"][regId].length > i)
-                   plot_data3.push([-i/5, parseInt(regHistory["_24h"][regId][i], 16)]);
+               if (regHistory["_10m"][reg_type][reg_key].length > i)
+                   plot_data1.push([-i/12, parseInt(regHistory["_10m"][reg_type][reg_key][i], 16)]);
+               if (regHistory["_60m"][reg_type][reg_key].length > i)
+                   plot_data2.push([-i/2, parseInt(regHistory["_60m"][reg_type][reg_key][i], 16)]);
+               if (regHistory["_24h"][reg_type][reg_key].length > i)
+                   plot_data3.push([-i/5, parseInt(regHistory["_24h"][reg_type][reg_key][i], 16)]);
             }
             var plot1 = $.jqplot(regId+'_graph1', [plot_data1], {
                                axesDefaults: { tickOptions: { textColor: '#999999', fontSize: '8pt' }},
@@ -2632,61 +3400,92 @@ function UpdateRegisters(init, printToScreen)
         processAjaxSuccess();
 
         try{
-            $.each(RegData.Registers["Base Registers"], function(i, item) {
-                var reg_key = Object.keys(item)[0]
-                var reg_val = item[Object.keys(item)[0]];
+            var localRegData = null;
+            var RegTypes = ['Holding', 'Inputs','Coils'];
+            $.each(RegTypes, function(i, reg_type){
+              
+              if (!(RegData.Registers.hasOwnProperty(reg_type))){
+                // no data for this register
+                return;
+              }
+              if (Object.keys(RegData.Registers[reg_type]).length < 1){
+                // no data for this register
+                return
+              }
+              localRegData = RegData.Registers[reg_type]
+            
+              if (localRegData == null){
+                return
+              }
+              $.each(localRegData, function(i, item) {
+                  var reg_key = Object.keys(item)[0]
+                  var reg_val = item[Object.keys(item)[0]];
 
-                if ((init) || (regHistory["_10m"][reg_key] == undefined)) {
-                    regHistory["updateTime"][reg_key] = 0;
-                    regHistory["_10m"][reg_key] = [reg_val];
-                    regHistory["_60m"][reg_key] = [reg_val, reg_val];
-                    regHistory["_24h"][reg_key] = [reg_val, reg_val];
-                } else {
-                   if (reg_val != regHistory["_10m"][reg_key][0]) {
-                      regHistory["updateTime"][reg_key] = new Date().getTime();
-
-                      if (printToScreen) {
-                        var outstr  = ((reg_key == "01f4") ? '<span class="registerTDvalMedium">HEX:<br>' + reg_val + '</span>' : 'HEX: '+reg_val) + '<br>';
-                            outstr += ((reg_key == "01f4") ? '' : '<span class="registerTDvalSmall">DEC: ' + parseInt(reg_val, 16) + ' | HI:LO: '+parseInt(reg_val.substring(0,2), 16)+':'+parseInt(reg_val.substring(2,4), 16)+'</span>');
-                        $("#content_"+reg_key).html(outstr);
+                  if ((init) || (regHistory["_10m"][reg_type] == undefined) || (regHistory["_10m"][reg_type][reg_key] == undefined)) {
+                      // reg has not been set before in regHistory so do it now
+                      if (regHistory["_10m"][reg_type] == undefined) {
+                        regHistory["updateTime"][reg_type] = {}
+                        regHistory["_10m"][reg_type] = {}
+                        regHistory["_60m"][reg_type] = {}
+                        regHistory["_24h"][reg_type] = {}
                       }
-                   }
-                }
-                regHistory["_10m"][reg_key].unshift(reg_val);
-                if  (regHistory["_10m"][reg_key].length > 120) {
-                   var removed = regHistory["_10m"][reg_key].pop  // remove the last element
-                }
+                      if (regHistory["_10m"][reg_type][reg_key] == undefined){
+                        regHistory["updateTime"][reg_type][reg_key] = 0;
+                        regHistory["_10m"][reg_type][reg_key] = [reg_val];
+                        regHistory["_60m"][reg_type][reg_key] = [reg_val, reg_val];
+                        regHistory["_24h"][reg_type][reg_key] = [reg_val, reg_val];
+                      }
+                  } else {
+                    if (reg_val != regHistory["_10m"][reg_type][reg_key][0]) {
+                        regHistory["updateTime"][reg_type][reg_key] = new Date().getTime();
 
-                if (regHistory["count_60m"] >= 12) {
-                   var min = 0;
-                   var max = 0;
-                   for (var i = 1; i <12; i++) {
-                       if (regHistory["_10m"][reg_key][i] > regHistory["_10m"][reg_key][max])
-                          max = i;
-                       if (regHistory["_10m"][reg_key][i] < regHistory["_10m"][reg_key][min])
-                          min = i;
-                   }
-                   regHistory["_60m"][reg_key].unshift(regHistory["_10m"][reg_key][((min > max) ? min : max)], regHistory["_10m"][reg_key][((min > max) ? max : min)]);
+                        if (printToScreen) {
+                          var outstr  = ((reg_key == "01f4") ? '<span class="registerTDvalMedium">HEX:<br>' + reg_val + '</span>' : 'HEX: '+reg_val) + '<br>';
+                              // This handles the case for byte data returning Not a Number (NaN) for coil registers that are one byte long
+                              var strHi = ((parseInt(reg_val) & 0xff00) >> 8).toString()
+                              var strLo = (parseInt(reg_val) & 0x00ff).toString()                    
+                              outstr += ((reg_key == "01f4") ? '' : '<span class="registerTDvalSmall">DEC: ' + parseInt(reg_val, 16) + ' | HI:LO: '+ strHi +':'+ strLo +'</span>');
+                          $("#content_"+reg_key).html(outstr);
+                        }
+                    }
+                  }
+                  // add the value to the begining of the array
+                  regHistory["_10m"][reg_type][reg_key].unshift(reg_val);
+                  if  (regHistory["_10m"][reg_type][reg_key].length > 120) {
+                    var removed = regHistory["_10m"][reg_type][reg_key].pop  // remove the last element
+                  }
 
-                   if  (regHistory["_60m"][reg_key].length > 120)
-                     regHistory["_60m"][reg_key].splice(-2, 2);  // remove the last 2 element
-                }
+                  if (regHistory["count_60m"] >= 12) {
+                    var min = 0;
+                    var max = 0;
+                    for (var i = 1; i <12; i++) {
+                        if (regHistory["_10m"][reg_type][reg_key][i] > regHistory["_10m"][reg_type][reg_key][max])
+                            max = i;
+                        if (regHistory["_10m"][reg_type][reg_key][i] < regHistory["_10m"][reg_type][reg_key][min])
+                            min = i;
+                    }
+                    regHistory["_60m"][reg_type][reg_key].unshift(regHistory["_10m"][reg_type][reg_key][((min > max) ? min : max)], regHistory["_10m"][reg_type][reg_key][((min > max) ? max : min)]);
 
-                if (regHistory["count_24h"] >= 288) {
-                   var min = 0;
-                   var max = 0;
-                   for (var i = 1; i <24; i++) {
-                       if (regHistory["_60m"][reg_key][i] > regHistory["_60m"][reg_key][max])
-                          max = i;
-                       if (regHistory["_60m"][reg_key][i] < regHistory["_60m"][reg_key][min])
-                          min = i;
-                   }
-                   regHistory["_24h"][reg_key].unshift(regHistory["_60m"][reg_key][((min > max) ? min : max)], regHistory["_60m"][reg_key][((min > max) ? max : min)]);
+                    if  (regHistory["_60m"][reg_type][reg_key].length > 120)
+                      regHistory["_60m"][reg_type][reg_key].splice(-2, 2);  // remove the last 2 element
+                  }
 
-                   if  (regHistory["_24h"][reg_key].length > 120)
-                     regHistory["_24h"][reg_key].splice(-2, 2);  // remove the last 2 element
-                }
-            });
+                  if (regHistory["count_24h"] >= 288) {
+                    var min = 0;
+                    var max = 0;
+                    for (var i = 1; i <24; i++) {
+                        if (regHistory["_60m"][reg_type][reg_key][i] > regHistory["_60m"][reg_type][reg_key][max])
+                            max = i;
+                        if (regHistory["_60m"][reg_type][reg_key][i] < regHistory["_60m"][reg_type][reg_key][min])
+                            min = i;
+                    }
+                    regHistory["_24h"][reg_type][reg_key].unshift(regHistory["_60m"][reg_type][reg_key][((min > max) ? min : max)], regHistory["_60m"][reg_type][reg_key][((min > max) ? max : min)]);
+
+                    if  (regHistory["_24h"][reg_type][reg_key].length > 120)
+                      regHistory["_24h"][reg_type][reg_key].splice(-2, 2);  // remove the last 2 element
+                  }
+              }); // end register data loop
+            });   // end register type loop
             regHistory["count_60m"] = ((regHistory["count_60m"] >= 12) ? 0 : regHistory["count_60m"]+1);
             regHistory["count_24h"] = ((regHistory["count_24h"] >= 288) ? 0 : regHistory["count_24h"]+1);
 
@@ -2694,27 +3493,36 @@ function UpdateRegisters(init, printToScreen)
                UpdateRegistersColor();
           }
           catch(err){
-              console.log("Error in UpdateRegisters" + err)
+              console.log("Error in UpdateRegisters: " + err)
           }
     }});
 }
 //*****************************************************************************
 function UpdateRegistersColor() {
     var CurrentTime = new Date().getTime();
-    $.each(regHistory["updateTime"], function( reg_key, update_time ){
+
+    var RegTypes = ['Holding', 'Inputs', 'Coils'];
+    $.each(RegTypes, function(i, reg_type){
+      if (!(regHistory["updateTime"].hasOwnProperty(reg_type))){
+        // no data for this register
+        return;
+      }
+      $.each(regHistory["updateTime"][reg_type], function( reg_key, update_time ){
         var difference = CurrentTime - update_time;
         var secondsDifference = Math.floor(difference/1000);
         if ((update_time > 0) && (secondsDifference >= fadeOffTime)) {
-           $("#content_"+reg_key).css("background-color", "#AAAAAA");
-           $("#content_"+reg_key).css("color", "red");
+           $("#content_"+ reg_type + '_'+ reg_key).css("background-color", "#AAAAAA");
+           $("#content_"+reg_type + '_'+ reg_key).css("color", "red");
         } else if ((update_time > 0) && (secondsDifference <= fadeOffTime)) {
            var hexShadeR = toHex(255-Math.floor(secondsDifference*85/fadeOffTime));
            var hexShadeG = toHex(Math.floor(secondsDifference*170/fadeOffTime));
            var hexShadeB = toHex(Math.floor(secondsDifference*170/fadeOffTime));
-           $("#content_"+reg_key).css("background-color", "#"+hexShadeR+hexShadeG+hexShadeB);
-           $("#content_"+reg_key).css("color", "black");
+           $("#content_"+reg_type + '_'+ reg_key).css("background-color", "#"+hexShadeR+hexShadeG+hexShadeB);
+           $("#content_"+reg_type + '_'+ reg_key).css("color", "black");
         }
+      });
     });
+    
 }
 //*****************************************************************************
 function printRegisters (type) {
@@ -2744,7 +3552,6 @@ function printRegisters (type) {
       dataDivider = 5;
     }
 
-
     $('<div id="printRegisterFrame" style="width:1000px"></div>').appendTo("#mydisplay");
 
     var now = new moment();
@@ -2752,47 +3559,56 @@ function printRegisters (type) {
     outstr += '<h2>As of: '+now.format("D MMMM YYYY H:mm:ss")+'<br><small>(data avilable since: '+regHistory["historySince"]+')</small></h2><br>';
     outstr += '<table width="1000px" border="0"><tr>';
 
-    $.each(Object.keys(data).sort(), function(i, reg_key) {
-        var max=data[reg_key][0];
-        var min=data[reg_key][0];
-        for (var j = 120; j >= 0; --j) {
-           if (data[reg_key][j] > max)
-              max = data[reg_key][j];
-           if (data[reg_key][j] < min)
-              min = data[reg_key][j];
-        }
-
-        if ((i % 3) == 0){
-          pageHeight += rowHeight;
-          if (pageHeight < 100) {
-             outstr += '</tr><tr>';
-          } else {
-             outstr += '</tr></table><div class="pagebreak"> </div><table width="1000px" border="0"><tr>';
-             pageHeight = 0;
+    var data_length = 0;
+    var RegTypes = ['Holding', 'Inputs', 'Coils'];
+    $.each(RegTypes, function(i, reg_type){
+      if (!(data.hasOwnProperty(reg_type))){
+        // no data for this register
+        return;
+      }
+      $.each(Object.keys(data[reg_type]).sort(), function(i, reg_key) {
+          data_length += 1;
+          var max=data[reg_type][reg_key][0];
+          var min=data[reg_type][reg_key][0];
+          for (var j = 120; j >= 0; --j) {
+            if (data[reg_type][reg_key][j] > max)
+                max = data[reg_type][reg_key][j];
+            if (data[reg_type][reg_key][j] < min)
+                min = data[reg_type][reg_key][j];
           }
-          rowHeight = 15;
-        }
 
-        var reg_val = data[reg_key][0];
+          if ((i % 3) == 0){
+            pageHeight += rowHeight;
+            if (pageHeight < 100) {
+              outstr += '</tr><tr>';
+            } else {
+              outstr += '</tr></table><div class="pagebreak"> </div><table width="1000px" border="0"><tr>';
+              pageHeight = 0;
+            }
+            rowHeight = 15;
+          }
 
-        outstr += '<td width="33%" class="printRegisterTD">';
-        outstr +=     '<table width="333px" heigth="100%" id="val_'+reg_key+'">';
-        outstr +=     '<tr><td align="center" class="printRegisterTDsubtitle">' + reg_key + '</td></tr>';
-        outstr +=     '<tr><td align="center" class="printRegisterTDtitle">' + BaseRegistersDescription[reg_key] + '</td></tr>';
-        outstr +=     '<tr><td align="center" class="printRegisterTDsubtitle">Current Value: ' + regHistory["_10m"][reg_key][0] + '</td></tr>';
-        if (min != max) {
-          outstr +=     '<tr><td align="center" class="printRegisterTDsubtitle">Minimum Value: '+min+'<br>Maximum Value: '+max+'</td></tr>';
-          outstr +=     '<tr><td align="center" class="regHistoryPlotCell"><div id="printPlot_'+reg_key+'"></div></td></tr>';
-          plots.push(reg_key);
-          rowHeight = 45;
-        } else {
-          outstr +=     '<tr><td align="center" class="printRegisterTDvalMedium">no change</td></tr>';
-        }
-        outstr +=     '</table>';
-        outstr += '</td>';
+          var reg_val = data[reg_type][reg_key][0];
+
+          outstr += '<td width="33%" class="printRegisterTD">';
+          outstr +=     '<table width="333px" heigth="100%" id="val_'+reg_type+'_'+reg_key+'">';
+          outstr +=     '<tr><td align="center" class="printRegisterTDsubtitle">' + reg_type+':'+reg_key + '</td></tr>';
+          outstr +=     '<tr><td align="center" class="printRegisterTDtitle">' + BaseRegistersDescription[reg_type][reg_key] + '</td></tr>';
+          outstr +=     '<tr><td align="center" class="printRegisterTDsubtitle">Current Value: ' + regHistory["_10m"][reg_type][reg_key][0] + '</td></tr>';
+          if (min != max) {
+            outstr +=     '<tr><td align="center" class="printRegisterTDsubtitle">Minimum Value: '+min+'<br>Maximum Value: '+max+'</td></tr>';
+            outstr +=     '<tr><td align="center" class="regHistoryPlotCell"><div id="printPlot_'+reg_type+'_'+reg_key+'"></div></td></tr>';
+            plots.push(reg_key);
+            rowHeight = 45;
+          } else {
+            outstr +=     '<tr><td align="center" class="printRegisterTDvalMedium">no change</td></tr>';
+          }
+          outstr +=     '</table>';
+          outstr += '</td>';
+      });
     });
-    if ((Object.keys(data).length % 3) > 0) {
-      for (var i = (Object.keys(data).length % 3); i < 3; i++) {
+    if ((data_length % 3) > 0) {
+      for (var i = (data_length % 3); i < 3; i++) {
           outstr += '<td width="333px" class="printRegisterTD"></td>';
        }
     }
@@ -2837,6 +3653,13 @@ function DisplayAdvancedSettings(){
             var key = settings[index];
             outstr += '<tr><td width="25px">&nbsp;</td><td width="300px">' + result[key][1] + '</td><td>' + printSettingsField(result[key][0], key, result[key][3], result[key][4], result[key][5]) + '</td></tr>';
         }
+        outstr += '</table></fieldset></form>';
+
+        outstr += '<table id="allactions" border="0">';
+        outstr += '<tr><td width="25px">&nbsp;</td><td width="300px">Restart Genmon Software</td><td><button style="margin-left:0px; margin-top:5px" id="callcmdrestart" onClick="sendServerCommand(\'restart\')">Restart</button></td></tr>';
+        outstr += '<tr><td width="25px">&nbsp;</td><td width="300px">Reboot System</td><td><button style="margin-left:0px; margin-top:5px" id="callcmdreboot" onClick="sendServerCommand(\'reboot\')">Reboot</button></td></tr>';
+        outstr += '<tr><td width="25px">&nbsp;</td><td width="300px">Shutdown System</td><td><button style="margin-left:0px; margin-top:5px" id="callcmdshutdown" onClick="sendServerCommand(\'shutdown\')">Shutdown</button></td></tr>';
+
         outstr += '</table></fieldset></form><br>';
         outstr += '<button id="setadvancedsettingsbutton" onClick="saveAdvancedSettings()">Save</button>';
 
@@ -2845,19 +3668,20 @@ function DisplayAdvancedSettings(){
         $.extend($.idealforms.rules, {
            // The rule is added as "ruleFunction:arg1:arg2"
            HTTPAddress: function(input, value, arg1, arg2) {
-             var regex = RegExp("^http[s]?:\\/\\/(([a-z0-9]+([\-\\.]{1}[a-z0-9]+)*\\.[a-z]{2,5}(\/.*)?)|(localhost(\/.*)?))$", 'g');
+             //var regex = RegExp("^http[s]?:\\/\\/(([a-z0-9]+([-\\.]{1}[a-z0-9]+)*\\.[a-z]{2,5}(\/.*)?)|(localhost(\/.*)?))$", 'g');
+             var regex = RegExp("^(?:https?:\/\/)(?!$)(?:www\.)?[a-zA-Z]*(?:\.[a-zA-Z]{2,6})?(?:(?:\d{1,3}\.){3}\d{1,3})?", 'g');
              return regex.test(value);
            },
            InternetAddress: function(input, value, arg1, arg2) {
-             var regex = RegExp("^(([a-z0-9]+([\-\\.]{1}[a-z0-9]+)*\\.[a-z]{2,5}(\/.*)?)|(localhost(\/.*)?))$", 'g');
+             var regex = RegExp("^(([a-z0-9]+([-\\.]{1}[a-z0-9]+)*\\.[a-z]{2,5}(\/.*)?)|(localhost(\/.*)?))$", 'g');
              return regex.test(value);
            },
            IPAddress: function(input, value, arg1, arg2) {
-             var regex = RegExp("^(((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\/.*)?)|(localhost(\/.*)?))$", 'g');
+             var regex = RegExp("^(((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?).(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?).(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?).(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)(\/.*)?)|(localhost(\/.*)?))$", 'g');
              return regex.test(value);
            },
            InternationalPhone: function(input, value, arg1, arg2) {
-             var regex = RegExp('^(\\+(\\d{1,3}))?((\\(\\d{1,4}\\))|(\\d{1,3}))?(\\s|\-)?(\\d+(\\s?|\-?))+$', 'g');
+             var regex = RegExp('^[0-9\-().+\s]{10,20}$', 'g');
              return regex.test(value);
            },
            UnixFile: function(input, value, arg1, arg2) {
@@ -2891,7 +3715,7 @@ function DisplayAdvancedSettings(){
 }
 
 //*****************************************************************************
-// called when Save Settings is clicked
+// called when Save Advanced Settings is clicked
 //*****************************************************************************
 function saveAdvancedSettings(){
 
@@ -3037,6 +3861,11 @@ function MenuClick(page)
                    DisplayRegistersFull();
                 }
                 break;
+            case "logout":
+                var getUrl = window.location;
+                var baseUrl = getUrl.protocol + "//" + getUrl.host;
+                window.location.href = baseUrl.concat("/logout");
+                break;
             default:
                 break;
         }
@@ -3110,9 +3939,13 @@ function GetStartupInfo()
 //*****************************************************************************
 function SetHeaderValues()
 {
-   var HeaderStr = '<table border="0" width="100%" height="30px"><tr><td width="30px"></td><td width="90%">Generator Monitor at ' + myGenerator["sitename"] + '</td><td width="30px"><img id="registers" class="registers" src="images/transparent.png" width="20px" height="20px"></td></tr></table>';
+   var HeaderStr = '<table border="0" width="100%" height="30px"><tr><td width="30px"></td><td width="90%">Generator Monitor at ' + myGenerator["sitename"] + '</td><td width="30px"><img id="logout" src="images/transparent.png" width="20px" height="20px">&nbsp;<img id="registers" class="registers" src="images/transparent.png" width="20px" height="20px"></td></tr></table>';
    $("#myheader").html(HeaderStr);
    $("#registers").on('click',  function() {  MenuClick("registers");});
+   if (myGenerator["LoginActive"] == true) {
+       $("#logout").addClass("logout");
+       $("#logout").on('click',  function() {  MenuClick("logout");});
+   }
 }
 
 
@@ -3157,7 +3990,7 @@ function GetkWHistory()
 }
 
 //*****************************************************************************
-// GetRegisterNames - Get the current Generator Model and kW Rating
+// GetRegisterNames - Get names of the registers
 //*****************************************************************************
 function GetRegisterNames()
 {
@@ -3178,6 +4011,9 @@ function GenmonAlert(msg)
        vex.dialog.alert({ unsafeMessage: '<table><tr><td valign="middle" width="200px" align="center"><img class="alert_large" src="images/transparent.png" width="64px" height="64px"></td><td valign="middle" width="70%">'+msg+'</td></tr></table>'});
 }
 
+//*****************************************************************************
+//
+//*****************************************************************************
 function GenmonPrompt(title, msg, placeholder)
 {
        vex.closeAll();
@@ -3251,6 +4087,29 @@ function GetBaseStatus()
 
           myGenerator['MonitorTime'] = result['MonitorTime'];
           myGenerator['RunHours'] = result['RunHours'];
+          myGenerator['AltDateformat'] = result['AltDateformat']
+          if (myGenerator['version'].length > 0) {
+             if (myGenerator['version'] != result['version']) {
+                myGenerator['version'] = result['version'];
+                var myDialog = vex.dialog.open({
+                   unsafeMessage: '',
+                   overlayClosesOnClick: false,
+                   buttons: []
+                });
+                
+                var DisplayStr1 = 'A change in the version was detected. Reloading web interface...';
+                var DisplayStr2 = '<div class="progress-bar"><span class="progress-bar-fill" style="width: 0%"></span></div>';
+                $('.vex-dialog-message').html(DisplayStr1);
+                $('.vex-dialog-buttons').html(DisplayStr2);
+                $('.progress-bar-fill').queue(function () {
+                     $(this).css('width', '100%')
+                });
+                
+                setTimeout(function(){ vex.closeAll(); window.location.href = window.location.pathname+"?page=about&reload=true"; }, 10000);
+             }
+          } else {
+             myGenerator['version'] = result['version'];
+          }
 
 
           if ((menuElement == "status") && (gauge.length > 0)) {
@@ -3301,6 +4160,31 @@ function GetBaseStatus()
             myGenerator['SystemHealth'] = false;
             $("#footer").removeClass("alert");
             $("#ajaxWarning").hide(400);
+          }
+
+          if (result['Weather'] != undefined && result['Weather'].length > 5) {
+            weatherCondition = "Unknown"
+            weatherIcon = "unknown.png"
+            weatherTemp = "unknown"
+            weatherWind = "unknown"
+            jQuery.each(result["Weather"], function( i, val ) {
+               if (Object.keys(val)[0] == "icon") {
+                  weatherIcon = val["icon"];
+               }
+               if (Object.keys(val)[0] == "Conditions") {
+                  weatherCondition = val["Conditions"];
+               }
+               if (Object.keys(val)[0] == "Current Temperature") {
+                  weatherTemp = val["Current Temperature"];
+               }
+               if (Object.keys(val)[0] == "Wind") {
+                  weatherWind = val["Wind"].replace(/\(.*\)/g, "").replace(/,/g, "");
+               }
+            });
+            if ((weatherIcon != "unknown.png") && (weatherTemp != "unknown") && (weatherWind != "unknown")) {
+               var tempMsg = '<table style="padding:0px;margin:0px"><tr><td><img class="greyscale" style="padding:0px;margins:0px;height:25px" src="https://openweathermap.org/img/w/' + weatherIcon + '.png"></td><td align="left" valign="middle"><b><font size="-2"><div style="line-height:9px;">'+weatherTemp+'<br>'+weatherWind+'</div></font></b></td><td>&nbsp;&nbsp;&nbsp;</td></tr></table>';
+               $('#footerWeather').html(tempMsg);
+            }
           }
 
           switchState = result['switchstate'];
